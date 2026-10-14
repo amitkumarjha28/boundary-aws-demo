@@ -1,0 +1,34 @@
+<powershell>
+# Set Administrator Password
+$AdminUser = [ADSI]"WinNT://./Administrator,user"
+$AdminUser.SetPassword("${windows_admin_password}")
+$AdminUser.UserFlags = 65536 # DONT_EXPIRE_PASSWORD
+$AdminUser.SetInfo()
+
+# Enable Remote Desktop (RDP)
+Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+# Ensure RDP Service is running
+Set-Service -Name TermService -StartupType Automatic
+Start-Service -Name TermService
+
+# Create a demo welcome note on the Public Desktop
+$WelcomeNote = @"
+=====================================================
+  WELCOME TO PRIVATE WINDOWS TARGET
+  Connected securely via HashiCorp Boundary!
+=====================================================
+
+This Windows Server instance is hosted entirely inside a 
+private AWS subnet with ZERO public IP address and ZERO 
+direct internet ingress.
+
+Your connection is proxied through:
+Boundary Client -> Ingress Worker (Public) -> Egress Worker (Private) -> Windows RDP (3389)
+"@
+
+$WelcomeNote | Out-File -FilePath "C:\Users\Public\Desktop\Boundary-Welcome.txt" -Encoding utf8
+
+Write-Host "Windows Target Initialized Successfully for Boundary RDP Demo!"
+</powershell>

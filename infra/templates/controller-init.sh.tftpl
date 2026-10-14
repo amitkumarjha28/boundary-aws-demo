@@ -1,0 +1,159 @@
+#!/bin/bash
+set -euxo pipefail
+
+echo "===> Initializing Boundary Controller setup..."
+
+# Install dependencies
+dnf install -y yum-utils postgresql15 jq nc
+
+# Install HashiCorp Boundary
+dnf config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo || true
+if ! dnf install -y boundary; then
+  echo "Installing boundary directly from official binary release..."
+  BOUNDARY_VER="${boundary_version}"
+  curl -fsSL "https://releases.hashicorp.com/boundary/$${BOUNDARY_VER}/boundary_$${BOUNDARY_VER}_linux_amd64.zip" -o /tmp/boundary.zip
+  unzip -o /tmp/boundary.zip -d /usr/bin/
+  chmod +x /usr/bin/boundary
+fi
+
+# Create dedicated boundary system user
+useradd --system --user-group boundary || true
+
+# Prepare directories
+mkdir -p /etc/boundary.d /var/log/boundary
+chown -R boundary:boundary /etc/boundary.d /var/log/boundary
+chmod 750 /etc/boundary.d /var/log/boundary
+
+# Write Boundary Controller HCL configuration
+cat << 'EOF' > /etc/boundary.d/controller.hcl
+disable_mlock = true
+
+controller {
+  name        = "boundary-controller-1"
+  description = "Boundary Primary Controller"
+  database {
+    url = "postgresql://${db_username}:${db_password}@${db_endpoint}/boundary?sslmode=disable"
+  }
+}
+
+listener "tcp" {
+  address              = "0.0.0.0:9200"
+  purpose              = "api"
+  tls_disable          = true
+  cors_enabled         = true
+  cors_allowed_origins = ["*"]
+}
+
+listener "tcp" {
+  address     = "0.0.0.0:9201"
+  purpose     = "cluster"
+  tls_disable = true
+}
+
+kms "aead" {
+  purpose   = "root"
+  aead_type = "aes-gcm"
+  key       = "${root_kms_key}"
+  key_id    = "global_root"
+}
+
+kms "aead" {
+  purpose   = "worker-auth"
+  aead_type = "aes-gcm"
+  key       = "${worker_auth_kms_key}"
+  key_id    = "global_worker_auth"
+}
+
+kms "aead" {
+  purpose   = "recovery"
+  aead_type = "aes-gcm"
+  key       = "${recovery_kms_key}"
+  key_id    = "global_recovery"
+}
+EOF
+
+chown boundary:boundary /etc/boundary.d/controller.hcl
+chmod 640 /etc/boundary.d/controller.hcl
+
+# Wait for PostgreSQL to be ready
+echo "===> Waiting for RDS PostgreSQL at ${db_endpoint}..."
+DB_HOST=$(echo "${db_endpoint}" | cut -d':' -f1)
+DB_PORT=$(echo "${db_endpoint}" | cut -d':' -f2)
+
+for i in {1..60}; do
+  if nc -z "$DB_HOST" "$DB_PORT"; then
+    echo "PostgreSQL is reachable!"
+    break
+  fi
+  echo "Waiting for database ($i/60)..."
+  sleep 5
+done
+
+# Initialize RDS Application Demo Database ('appdb') with sample demo data
+echo "===> Initializing RDS Demo Target Database ('appdb')..."
+PGPASSWORD="${db_password}" psql -h "$DB_HOST" -p "$DB_PORT" -U "${db_username}" -d postgres -c "CREATE DATABASE appdb;" || true
+
+PGPASSWORD="${db_password}" psql -h "$DB_HOST" -p "$DB_PORT" -U "${db_username}" -d appdb << 'DBSCRIPT' || true
+CREATE TABLE IF NOT EXISTS demo_customers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    department VARCHAR(50),
+    balance NUMERIC(12, 2) DEFAULT 0.00,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO demo_customers (name, email, department, balance) VALUES
+('Alice Johnson', 'alice.johnson@corp.internal', 'Finance', 145000.50),
+('Bob Chen', 'bob.chen@corp.internal', 'Engineering', 98200.00),
+('Carlos Mendez', 'carlos.m@corp.internal', 'Marketing', 64300.75),
+('Devon Patel', 'devon.p@corp.internal', 'Security', 112000.25)
+ON CONFLICT (email) DO NOTHING;
+
+CREATE USER demouser WITH PASSWORD '${demo_db_password}';
+GRANT CONNECT ON DATABASE appdb TO demouser;
+GRANT USAGE ON SCHEMA public TO demouser;
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO demouser;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE ON TABLES TO demouser;
+DBSCRIPT
+
+# Initialize Boundary Database
+echo "===> Initializing Boundary Database Schema..."
+boundary database init -config /etc/boundary.d/controller.hcl > /etc/boundary.d/db-init.log 2>&1 || {
+  echo "Boundary DB init returned non-zero (schema may already exist). Checking log:"
+  cat /etc/boundary.d/db-init.log || true
+}
+
+# Create systemd service unit for Boundary Controller
+cat << 'EOF' > /etc/systemd/system/boundary-controller.service
+[Unit]
+Description=HashiCorp Boundary Controller
+Documentation=https://www.boundaryproject.io/docs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=boundary
+Group=boundary
+ExecStart=/usr/bin/boundary server -config /etc/boundary.d/controller.hcl
+ExecReload=/bin/kill --signal HUP $MAINPID
+KillMode=process
+KillSignal=SIGINT
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+LimitMEMLOCK=infinity
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload and start Boundary Controller service
+systemctl daemon-reload
+systemctl enable boundary-controller
+systemctl start boundary-controller
+
+echo "===> Boundary Controller service started successfully!"

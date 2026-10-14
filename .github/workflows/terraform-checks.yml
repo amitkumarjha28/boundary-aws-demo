@@ -1,0 +1,32 @@
+name: Terraform checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dir: [infra, boundary-config]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: terraform fmt
+        run: terraform fmt -check -recursive
+        working-directory: ${{ matrix.dir }}
+      - name: terraform init
+        run: terraform init -backend=false -input=false
+        working-directory: ${{ matrix.dir }}
+      - name: terraform validate
+        run: terraform validate
+        working-directory: ${{ matrix.dir }}
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash syntax
+        run: for f in scripts/*.sh; do bash -n "$f"; done

@@ -1,0 +1,135 @@
+variable "aws_region" {
+  description = "AWS region to deploy resources"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "environment" {
+  description = "Environment tag name"
+  type        = string
+  default     = "demo"
+}
+
+variable "vpc_cidr" {
+  description = "VPC CIDR block"
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
+variable "public_subnet_cidr" {
+  description = "CIDR block for the Public Subnet (Hosts Controller, Ingress Worker, NAT)"
+  type        = string
+  default     = "10.0.1.0/24"
+}
+
+variable "private_subnet_cidr" {
+  description = "CIDR block for the Primary Private Subnet (Hosts Egress Worker, Linux, Windows, RDS)"
+  type        = string
+  default     = "10.0.2.0/24"
+}
+
+variable "private_subnet_secondary_cidr" {
+  description = "CIDR block for the Secondary Private Subnet (Required for AWS RDS DB Subnet Group)"
+  type        = string
+  default     = "10.0.3.0/24"
+}
+
+variable "boundary_version" {
+  description = "HashiCorp Boundary binary version to install"
+  type        = string
+  default     = "0.19.2"
+}
+
+variable "authorized_client_cidr" {
+  description = "CIDR block authorized to access Boundary Controller UI (port 9200) and Ingress Worker (port 9202). HCP Terraform runners must reach port 9200 for the boundary-config workspace, so restricting this requires an HCP Terraform agent."
+  type        = string
+  default     = "0.0.0.0/0"
+}
+
+variable "enable_nat_gateway" {
+  description = "If true, provisions AWS Managed NAT Gateway (~$32/mo). If false, provisions a cost-effective t3.nano NAT instance (~$3/mo)."
+  type        = bool
+  default     = false
+}
+
+variable "instance_type_controller" {
+  description = "EC2 instance size for Boundary Controller"
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "instance_type_ingress_worker" {
+  description = "EC2 instance size for Boundary Ingress Worker"
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "instance_type_egress_worker" {
+  description = "EC2 instance size for Boundary Egress Worker"
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "instance_type_linux_target" {
+  description = "EC2 instance size for Linux Target (SSH + Web Demo)"
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "instance_type_windows_target" {
+  description = "EC2 instance size for Windows Target (RDP). Windows requires minimum 2GB RAM (t3.small)."
+  type        = string
+  default     = "t3.small"
+}
+
+variable "instance_type_nat" {
+  description = "EC2 instance size for NAT Instance if enable_nat_gateway is false"
+  type        = string
+  default     = "t3.nano"
+}
+
+variable "rds_instance_class" {
+  description = "RDS instance class for PostgreSQL backend and demo target database"
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "rds_allocated_storage" {
+  description = "Storage allocated for RDS in GB"
+  type        = number
+  default     = 20
+}
+
+variable "rds_username" {
+  description = "Master username for RDS PostgreSQL"
+  type        = string
+  default     = "postgres"
+}
+
+variable "rds_password" {
+  description = "Master password for RDS PostgreSQL. If null, a random password is generated."
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "windows_admin_password" {
+  description = "Administrator password for Windows Target. If null, a random password is generated."
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "linux_ssh_password" {
+  description = "Password for the boundary-user account on the Linux Target. If null, a random password is generated."
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "demo_db_password" {
+  description = "Password for the demouser role in the appdb demo database. If null, a random password is generated."
+  type        = string
+  default     = null
+  sensitive   = true
+}

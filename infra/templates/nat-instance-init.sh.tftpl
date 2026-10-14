@@ -1,0 +1,23 @@
+#!/bin/bash
+set -e
+
+# Enable IP forwarding
+echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/nat.conf
+sysctl -p /etc/sysctl.d/nat.conf
+
+# Configure iptables NAT masquerading
+dnf install -y iptables iptables-services
+
+# Find default network interface
+DEFAULT_IFACE=$(ip route | grep '^default' | awk '{print $5}')
+
+iptables -t nat -A POSTROUTING -o "$DEFAULT_IFACE" -j MASQUERADE
+iptables -A FORWARD -i "$DEFAULT_IFACE" -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -o "$DEFAULT_IFACE" -j ACCEPT
+
+# Save iptables rules to persist across reboots
+service iptables save
+systemctl enable iptables
+systemctl start iptables
+
+echo "NAT instance configured successfully on interface $DEFAULT_IFACE"

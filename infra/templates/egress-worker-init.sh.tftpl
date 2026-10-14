@@ -1,0 +1,123 @@
+#!/bin/bash
+set -euxo pipefail
+
+echo "===> Initializing Boundary Egress Worker setup..."
+
+# Install dependencies
+dnf install -y yum-utils jq nc
+
+# Install HashiCorp Boundary
+dnf config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo || true
+if ! dnf install -y boundary; then
+  echo "Installing boundary directly from official binary release..."
+  BOUNDARY_VER="${boundary_version}"
+  curl -fsSL "https://releases.hashicorp.com/boundary/$${BOUNDARY_VER}/boundary_$${BOUNDARY_VER}_linux_amd64.zip" -o /tmp/boundary.zip
+  unzip -o /tmp/boundary.zip -d /usr/bin/
+  chmod +x /usr/bin/boundary
+fi
+
+# Create dedicated boundary system user
+useradd --system --user-group boundary || true
+
+# Prepare directories
+mkdir -p /etc/boundary.d /var/log/boundary
+chown -R boundary:boundary /etc/boundary.d /var/log/boundary
+chmod 750 /etc/boundary.d /var/log/boundary
+
+# Fetch EC2 Private IP using IMDSv2
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60" || true)
+PRIVATE_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4 || true)
+
+echo "Egress Worker detected Private IP: $PRIVATE_IP"
+
+# Wait for Controller cluster port (9201) to become active
+echo "===> Waiting for Controller at ${controller_private_ip}:9201..."
+for i in {1..60}; do
+  if nc -z "${controller_private_ip}" 9201; then
+    echo "Boundary Controller cluster port is reachable!"
+    break
+  fi
+  echo "Waiting for controller ($i/60)..."
+  sleep 5
+done
+
+# Wait for Ingress Worker proxy port (9202) to become active
+echo "===> Waiting for Ingress Worker upstream at ${ingress_worker_private_ip}:9202..."
+for i in {1..60}; do
+  if nc -z "${ingress_worker_private_ip}" 9202; then
+    echo "Ingress Worker proxy port is reachable!"
+    break
+  fi
+  echo "Waiting for Ingress Worker ($i/60)..."
+  sleep 5
+done
+
+# Write Boundary Egress Worker configuration
+cat << EOF > /etc/boundary.d/egress-worker.hcl
+disable_mlock = true
+
+worker {
+  name        = "boundary-egress-worker-1"
+  description = "Boundary Private Egress Worker"
+  public_addr = "$PRIVATE_IP"
+  tags {
+    type = ["egress", "private"]
+  }
+  controllers = [
+    "${controller_private_ip}:9201"
+  ]
+  initial_upstreams = [
+    "${ingress_worker_private_ip}:9202"
+  ]
+}
+
+listener "tcp" {
+  address     = "0.0.0.0:9202"
+  purpose     = "proxy"
+  tls_disable = true
+}
+
+kms "aead" {
+  purpose   = "worker-auth"
+  aead_type = "aes-gcm"
+  key       = "${worker_auth_kms_key}"
+  key_id    = "global_worker_auth"
+}
+EOF
+
+chown boundary:boundary /etc/boundary.d/egress-worker.hcl
+chmod 640 /etc/boundary.d/egress-worker.hcl
+
+# Create systemd service unit for Boundary Egress Worker
+cat << 'EOF' > /etc/systemd/system/boundary-worker.service
+[Unit]
+Description=HashiCorp Boundary Egress Worker
+Documentation=https://www.boundaryproject.io/docs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=boundary
+Group=boundary
+ExecStart=/usr/bin/boundary server -config /etc/boundary.d/egress-worker.hcl
+ExecReload=/bin/kill --signal HUP $MAINPID
+KillMode=process
+KillSignal=SIGINT
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+LimitMEMLOCK=infinity
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload and start service
+systemctl daemon-reload
+systemctl enable boundary-worker
+systemctl start boundary-worker
+
+echo "===> Boundary Egress Worker started successfully!"

@@ -1,0 +1,45 @@
+output "boundary_addr" {
+  description = "Boundary Controller API / UI address"
+  value       = local.infra.boundary_controller_url
+}
+
+output "org_id" {
+  description = "Demo Organization Scope ID"
+  value       = boundary_scope.org.id
+}
+
+output "project_id" {
+  description = "Core Infrastructure Project Scope ID"
+  value       = boundary_scope.project.id
+}
+
+output "auth_method_id" {
+  description = "Password Auth Method ID"
+  value       = boundary_auth_method.password.id
+}
+
+output "linux_ssh_target_id" {
+  description = "Boundary Target ID for Linux SSH"
+  value       = boundary_target.linux_ssh.id
+}
+
+output "windows_rdp_target_id" {
+  description = "Boundary Target ID for Windows RDP"
+  value       = boundary_target.windows_rdp.id
+}
+
+output "rds_postgres_target_id" {
+  description = "Boundary Target ID for RDS PostgreSQL"
+  value       = boundary_target.rds_postgres.id
+}
+
+output "web_target_id" {
+  description = "Boundary Target ID for Internal Web Portal"
+  value       = boundary_target.internal_web.id
+}
+
+output "user_passwords" {
+  description = "Generated passwords for the demo Boundary login accounts (admin, devops, sysadmin, analyst)"
+  value       = { for u in local.demo_users : u => random_password.user[u].result }
+  sensitive   = true
+}

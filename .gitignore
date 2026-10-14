@@ -1,0 +1,20 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+!terraform.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Boundary local state & artifacts
+boundary_demo_targets.json
+.boundary/
+
+# OS artifacts
+.DS_Store
+Thumbs.db

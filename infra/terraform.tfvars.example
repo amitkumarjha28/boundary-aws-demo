@@ -1,0 +1,40 @@
+# Sample variable values for the boundary-demo-infra workspace.
+# In HCP Terraform, set these as workspace Terraform variables (or copy to
+# terraform.tfvars for CLI-driven runs; *.tfvars is gitignored).
+aws_region     = "us-east-1"
+environment    = "demo"
+
+# Network
+vpc_cidr                      = "10.0.0.0/16"
+public_subnet_cidr            = "10.0.1.0/24"
+private_subnet_cidr           = "10.0.2.0/24"
+private_subnet_secondary_cidr = "10.0.3.0/24"
+
+# Set this to your external public IP for enhanced security (e.g., "203.0.113.45/32")
+authorized_client_cidr = "0.0.0.0/0"
+
+# Cost Optimization:
+# Keep false to use a low-cost t3.nano NAT instance (~$3/mo)
+# Set true to use AWS Managed NAT Gateway (~$32/mo)
+enable_nat_gateway = false
+
+# Compute instance types
+instance_type_controller     = "t3.micro"
+instance_type_ingress_worker = "t3.micro"
+instance_type_egress_worker  = "t3.micro"
+instance_type_linux_target   = "t3.micro"
+instance_type_windows_target = "t3.small" # Minimum 2GB RAM required for Windows
+instance_type_nat            = "t3.nano"
+
+# Database
+rds_instance_class    = "db.t4g.micro"
+rds_allocated_storage = 20
+rds_username          = "postgres"
+
+# Boundary
+boundary_version = "0.19.2"
+
+# Passwords are generated automatically (see passwords.tf). To pin your own,
+# set these as *sensitive* variables in the HCP Terraform workspace instead
+# of committing them:
+#   rds_password, windows_admin_password, linux_ssh_password, demo_db_password
