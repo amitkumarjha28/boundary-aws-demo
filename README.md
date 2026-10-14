@@ -67,7 +67,7 @@ graph TD
 | **SSH credential injection** | `linux-ssh-target` (type `ssh`) | The worker logs in to the target for the user, who never sees the password |
 | **Session recording** | `linux-ssh-target` → storage bucket `aws-session-recordings` | Workers stage recordings in `/var/lib/boundary/recordings` and upload them to a private, encrypted S3 bucket. Recordings are signed and encrypted with the `bsr` KMS key |
 
-Session recording storage uses **dynamic AWS credentials**. The Boundary AWS plugin, on the controller and on workers tagged `storage = ["s3"]`, assumes the `<env>-boundary-session-recording` IAM role, which only those instance roles can assume and which can only reach that bucket. Private-subnet workers reach S3 through a gateway VPC endpoint.
+Session recording storage uses **dynamic AWS credentials**. Workers tagged `storage = ["s3"]` access S3 with their own instance-profile role (`<env>-boundary-worker-role`, the storage bucket's `role_arn`), which can only reach that bucket. Private-subnet workers reach S3 through a gateway VPC endpoint.
 
 To view recordings, sign in to the Admin UI as an admin (`admin`, `alice` or `bob`) and go to **Demo-Org → Session Recordings** to play back SSH sessions. You can also use menu option `r` or `boundary session-recordings list -scope-id global -recursive`.
 

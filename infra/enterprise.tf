@@ -61,8 +61,9 @@ resource "aws_vpc_endpoint" "s3" {
 
 # -------------------------------------------------------------------------
 # IAM
-# The Boundary AWS storage plugin uses dynamic credentials: the controller
-# and workers assume the session-recording role from their instance profiles.
+# The Boundary AWS storage plugin uses dynamic credentials: workers access S3
+# with their own instance-profile credentials (the storage bucket's role_arn
+# is the worker role), so the S3 permissions live on the worker role.
 # -------------------------------------------------------------------------
 
 locals {
@@ -103,12 +104,6 @@ resource "aws_iam_role_policy" "controller" {
         Resource = aws_ssm_parameter.boundary_license.arn
       },
       {
-        Sid      = "AssumeSessionRecordingRole"
-        Effect   = "Allow"
-        Action   = ["sts:AssumeRole"]
-        Resource = aws_iam_role.session_recording.arn
-      },
-      {
         Sid      = "PublishBootDiagnostics"
         Effect   = "Allow"
         Action   = ["ssm:PutParameter"]
@@ -141,45 +136,7 @@ resource "aws_iam_role_policy" "worker" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid      = "AssumeSessionRecordingRole"
-      Effect   = "Allow"
-      Action   = ["sts:AssumeRole"]
-      Resource = aws_iam_role.session_recording.arn
-    }]
-  })
-}
-
-resource "aws_iam_instance_profile" "worker" {
-  name = "${var.environment}-boundary-worker-profile"
-  role = aws_iam_role.worker.name
-}
-
-# Session recording role: S3 access, assumable only by the controller and workers
-resource "aws_iam_role" "session_recording" {
-  name = "${var.environment}-boundary-session-recording"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action    = "sts:AssumeRole"
-      Effect    = "Allow"
-      Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
-      Condition = {
-        ArnEquals = {
-          "aws:PrincipalArn" = [aws_iam_role.controller.arn, aws_iam_role.worker.arn]
-        }
-      }
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "session_recording" {
-  name = "boundary-session-recording-s3"
-  role = aws_iam_role.session_recording.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
+      Sid    = "SessionRecordingStorage"
       Effect = "Allow"
       Action = [
         "s3:PutObject",
@@ -194,6 +151,11 @@ resource "aws_iam_role_policy" "session_recording" {
       ]
     }]
   })
+}
+
+resource "aws_iam_instance_profile" "worker" {
+  name = "${var.environment}-boundary-worker-profile"
+  role = aws_iam_role.worker.name
 }
 
 # -------------------------------------------------------------------------

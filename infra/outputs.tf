@@ -142,8 +142,8 @@ output "session_recording_bucket" {
 }
 
 output "session_recording_role_arn" {
-  description = "IAM role the Boundary AWS storage plugin assumes for session recording"
-  value       = aws_iam_role.session_recording.arn
+  description = "IAM role (worker instance profile) the Boundary AWS storage plugin uses for session recording"
+  value       = aws_iam_role.worker.arn
 }
 
 output "controller_boot_diagnostics" {

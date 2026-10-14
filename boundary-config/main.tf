@@ -254,7 +254,7 @@ resource "boundary_role" "org_admin" {
   name            = "org-admin-role"
   description     = "Full administrative access to Demo-Org and its projects (admin user + LDAP boundary-admins)"
   scope_id        = boundary_scope.org.id
-  grant_scope_ids = ["this", "descendants"]
+  grant_scope_ids = ["this", "children"] # org roles use "children"; "descendants" is global-only
   principal_ids   = [boundary_user.admin.id, boundary_managed_group_ldap.admins.id]
   grant_strings   = ["ids=*;type=*;actions=*"]
 }
