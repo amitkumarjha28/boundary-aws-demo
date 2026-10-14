@@ -172,21 +172,24 @@ DBSCRIPT
 
 # Initialize Boundary Database
 echo "===> Initializing Boundary Database Schema..."
-if ! boundary database init -config /etc/boundary.d/controller.hcl > /etc/boundary.d/db-init.log 2>&1; then
-  if grep -q "already been initialized" /etc/boundary.d/db-init.log; then
-    # Existing database (replaced controller, version upgrade, or community ->
-    # Enterprise): bring the schema up to this binary or the server won't start
-    echo "Boundary database already initialized; running migrations..."
-    boundary database migrate -config /etc/boundary.d/controller.hcl > /etc/boundary.d/db-migrate.log 2>&1 || {
-      echo "Boundary database migrate FAILED:"
-      grep -v "postgresql://" /etc/boundary.d/db-migrate.log || true
-      exit 1
-    }
-  else
-    echo "Boundary database init FAILED:"
-    grep -v "postgresql://" /etc/boundary.d/db-init.log || true
+# Note: init exits 0 even when the database is already initialized, so decide
+# on its message rather than its exit code.
+init_rc=0
+boundary database init -config /etc/boundary.d/controller.hcl > /etc/boundary.d/db-init.log 2>&1 || init_rc=$?
+if grep -q "already been initialized" /etc/boundary.d/db-init.log; then
+  # Existing database (replaced controller, version upgrade, or community ->
+  # Enterprise): bring the schema up to this binary or the server won't start
+  echo "Boundary database already initialized; running migrations..."
+  boundary database migrate -config /etc/boundary.d/controller.hcl > /etc/boundary.d/db-migrate.log 2>&1 || {
+    echo "Boundary database migrate FAILED:"
+    grep -v "postgresql://" /etc/boundary.d/db-migrate.log || true
     exit 1
-  fi
+  }
+  tail -1 /etc/boundary.d/db-migrate.log
+elif [ "$init_rc" -ne 0 ]; then
+  echo "Boundary database init FAILED:"
+  grep -v "postgresql://" /etc/boundary.d/db-init.log || true
+  exit 1
 fi
 
 # Read-only role for Grafana: SELECT on the Boundary data warehouse (wh_*) tables only
