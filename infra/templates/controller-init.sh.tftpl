@@ -28,13 +28,16 @@ chmod 750 /etc/boundary.d /var/log/boundary
 echo "===> Fetching Boundary Enterprise license from SSM..."
 for i in {1..30}; do
   if aws ssm get-parameter --region "${aws_region}" --name "${license_parameter}" --with-decryption \
-      --query Parameter.Value --output text > /etc/boundary.d/boundary.hclic 2>/dev/null; then
+      --query Parameter.Value --output text > /etc/boundary.d/boundary.hclic 2>/tmp/ssm-license.err; then
     break
   fi
-  echo "Waiting for license parameter ($i/30)..."
+  echo "Waiting for license parameter ($i/30): $(tail -1 /tmp/ssm-license.err)"
   sleep 10
 done
-test -s /etc/boundary.d/boundary.hclic
+if [ ! -s /etc/boundary.d/boundary.hclic ]; then
+  echo "Could not read the Boundary license from SSM:"; cat /tmp/ssm-license.err
+  exit 1
+fi
 chown boundary:boundary /etc/boundary.d/boundary.hclic
 chmod 640 /etc/boundary.d/boundary.hclic
 
@@ -153,7 +156,14 @@ DBSCRIPT
 echo "===> Initializing Boundary Database Schema..."
 if ! boundary database init -config /etc/boundary.d/controller.hcl > /etc/boundary.d/db-init.log 2>&1; then
   if grep -q "already been initialized" /etc/boundary.d/db-init.log; then
-    echo "Boundary database already initialized; continuing."
+    # Existing database (replaced controller, version upgrade, or community ->
+    # Enterprise): bring the schema up to this binary or the server won't start
+    echo "Boundary database already initialized; running migrations..."
+    boundary database migrate -config /etc/boundary.d/controller.hcl > /etc/boundary.d/db-migrate.log 2>&1 || {
+      echo "Boundary database migrate FAILED:"
+      grep -v "postgresql://" /etc/boundary.d/db-migrate.log || true
+      exit 1
+    }
   else
     echo "Boundary database init FAILED:"
     grep -v "postgresql://" /etc/boundary.d/db-init.log || true
