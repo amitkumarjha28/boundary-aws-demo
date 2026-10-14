@@ -58,39 +58,14 @@ resource "aws_security_group" "ops" {
   }
 }
 
-# Prometheus scrapes the Boundary ops listener (port 9203) on every node
-resource "aws_security_group_rule" "metrics_from_ops" {
-  for_each = {
-    controller     = aws_security_group.controller.id
-    ingress_worker = aws_security_group.ingress_worker.id
-    egress_worker  = aws_security_group.egress_worker.id
-  }
-
-  type                     = "ingress"
-  from_port                = 9203
-  to_port                  = 9203
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.ops.id
-  security_group_id        = each.value
-  description              = "Boundary ops listener (metrics) from Prometheus"
-}
-
-# Grafana reads the Boundary data warehouse tables (read-only role)
-resource "aws_security_group_rule" "rds_from_ops" {
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.ops.id
-  security_group_id        = aws_security_group.rds.id
-  description              = "PostgreSQL warehouse reads from Grafana"
-}
+# Metrics (9203) and warehouse (RDS 5432) access for this instance are granted
+# inline in security_groups.tf to the ops_client SG attached below.
 
 resource "aws_instance" "ops" {
   ami                         = data.aws_ami.amazon_linux_2023.id
   instance_type               = var.instance_type_ops
   subnet_id                   = aws_subnet.private_primary.id
-  vpc_security_group_ids      = [aws_security_group.ops.id]
+  vpc_security_group_ids      = [aws_security_group.ops.id, aws_security_group.ops_client.id]
   iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
   associate_public_ip_address = false
 

@@ -1,6 +1,21 @@
 # -------------------------------------------------------------------------
 # Security Groups: Enforcing Zero-Trust Segmentation
+# All rules are inline. Do not add aws_security_group_rule resources for these
+# groups: inline rules are authoritative and would revoke them on every apply.
 # -------------------------------------------------------------------------
+
+# 0. Ops client marker (attached to the ops instance alongside its own SG).
+# Node and RDS groups reference this one, so the ops SG can reference the
+# controller/egress groups without creating a dependency cycle.
+resource "aws_security_group" "ops_client" {
+  name        = "${var.environment}-boundary-ops-client-sg"
+  description = "Identifies the ops instance (Prometheus/Grafana) as a traffic source"
+  vpc_id      = aws_vpc.main.id
+
+  tags = {
+    Name = "${var.environment}-boundary-ops-client-sg"
+  }
+}
 
 # 1. Boundary Controller Security Group (Public Subnet)
 resource "aws_security_group" "controller" {
@@ -23,7 +38,15 @@ resource "aws_security_group" "controller" {
     from_port       = 9201
     to_port         = 9201
     protocol        = "tcp"
-    security_groups = [] # Will be updated via aws_security_group_rule to avoid circular dependency
+    security_groups = [aws_security_group.ingress_worker.id, aws_security_group.egress_worker.id]
+  }
+
+  ingress {
+    description     = "Boundary ops listener (metrics) from Prometheus"
+    from_port       = 9203
+    to_port         = 9203
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ops_client.id]
   }
 
   egress {
@@ -54,6 +77,14 @@ resource "aws_security_group" "ingress_worker" {
     cidr_blocks = [var.authorized_client_cidr]
   }
 
+  ingress {
+    description     = "Boundary ops listener (metrics) from Prometheus"
+    from_port       = 9203
+    to_port         = 9203
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ops_client.id]
+  }
+
   egress {
     description = "Allow all outbound traffic"
     from_port   = 0
@@ -82,6 +113,14 @@ resource "aws_security_group" "egress_worker" {
     security_groups = [aws_security_group.ingress_worker.id]
   }
 
+  ingress {
+    description     = "Boundary ops listener (metrics) from Prometheus"
+    from_port       = 9203
+    to_port         = 9203
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ops_client.id]
+  }
+
   egress {
     description = "Allow all outbound traffic"
     from_port   = 0
@@ -93,27 +132,6 @@ resource "aws_security_group" "egress_worker" {
   tags = {
     Name = "${var.environment}-boundary-egress-worker-sg"
   }
-}
-
-# Cluster ingress rules on Controller to avoid cycle
-resource "aws_security_group_rule" "controller_cluster_from_ingress" {
-  type                     = "ingress"
-  from_port                = 9201
-  to_port                  = 9201
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.ingress_worker.id
-  security_group_id        = aws_security_group.controller.id
-  description              = "Cluster registration from Ingress Worker"
-}
-
-resource "aws_security_group_rule" "controller_cluster_from_egress" {
-  type                     = "ingress"
-  from_port                = 9201
-  to_port                  = 9201
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.egress_worker.id
-  security_group_id        = aws_security_group.controller.id
-  description              = "Cluster registration from Egress Worker"
 }
 
 # 4. Target Instances Security Group (Private Subnet)
@@ -187,6 +205,15 @@ resource "aws_security_group" "rds" {
     security_groups = [aws_security_group.egress_worker.id]
   }
 
+  # Grafana reads the Boundary data warehouse (read-only role)
+  ingress {
+    description     = "PostgreSQL warehouse reads from Grafana"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ops_client.id]
+  }
+
   egress {
     description = "Allow outbound"
     from_port   = 0
@@ -197,5 +224,35 @@ resource "aws_security_group" "rds" {
 
   tags = {
     Name = "${var.environment}-boundary-rds-sg"
+  }
+}
+
+# Former standalone rules, now inline above. Forget them without revoking
+# (the inline definitions adopt or replace the live rules).
+removed {
+  from = aws_security_group_rule.controller_cluster_from_ingress
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = aws_security_group_rule.controller_cluster_from_egress
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = aws_security_group_rule.metrics_from_ops
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = aws_security_group_rule.rds_from_ops
+  lifecycle {
+    destroy = false
   }
 }
