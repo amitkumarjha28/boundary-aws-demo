@@ -19,9 +19,11 @@ authorized_client_cidr = "0.0.0.0/0"
 enable_nat_gateway = false
 
 # Compute instance types
-instance_type_controller     = "t3.micro"
-instance_type_ingress_worker = "t3.micro"
-instance_type_egress_worker  = "t3.micro"
+instance_type_controller     = "t3.xlarge" # 4 vCPU, 16 GiB
+instance_type_ingress_worker = "t3.large"  # 2 vCPU, 8 GiB
+instance_type_egress_worker  = "t3.large"  # 2 vCPU, 8 GiB
+controller_root_volume_gb    = 50
+worker_root_volume_gb        = 50
 instance_type_linux_target   = "t3.micro"
 instance_type_windows_target = "t3.small" # Minimum 2GB RAM required for Windows
 instance_type_nat            = "t3.micro" # t3.nano (512 MB) runs out of memory during dnf install

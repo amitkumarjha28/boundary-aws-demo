@@ -53,21 +53,43 @@ variable "enable_nat_gateway" {
 }
 
 variable "instance_type_controller" {
-  description = "EC2 instance size for Boundary Controller"
+  description = "EC2 instance size for Boundary Controller (default t3.xlarge: 4 vCPU, 16 GiB)"
   type        = string
-  default     = "t3.micro"
+  default     = "t3.xlarge"
 }
 
 variable "instance_type_ingress_worker" {
-  description = "EC2 instance size for Boundary Ingress Worker"
+  description = "EC2 instance size for Boundary Ingress Worker (default t3.large: 2 vCPU, 8 GiB)"
   type        = string
-  default     = "t3.micro"
+  default     = "t3.large"
 }
 
 variable "instance_type_egress_worker" {
-  description = "EC2 instance size for Boundary Egress Worker"
+  description = "EC2 instance size for Boundary Egress Worker (default t3.large: 2 vCPU, 8 GiB)"
   type        = string
-  default     = "t3.micro"
+  default     = "t3.large"
+}
+
+variable "controller_root_volume_gb" {
+  description = "Root volume size (GB, gp3) for the Boundary Controller"
+  type        = number
+  default     = 50
+
+  validation {
+    condition     = var.controller_root_volume_gb >= 50
+    error_message = "controller_root_volume_gb must be at least 50."
+  }
+}
+
+variable "worker_root_volume_gb" {
+  description = "Root volume size (GB, gp3) for each Boundary worker; also holds session recordings before upload to S3"
+  type        = number
+  default     = 50
+
+  validation {
+    condition     = var.worker_root_volume_gb >= 50
+    error_message = "worker_root_volume_gb must be at least 50."
+  }
 }
 
 variable "instance_type_linux_target" {

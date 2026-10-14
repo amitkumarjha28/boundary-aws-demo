@@ -29,7 +29,7 @@ resource "aws_instance" "controller" {
   })
 
   root_block_device {
-    volume_size           = 20
+    volume_size           = var.controller_root_volume_gb
     volume_type           = "gp3"
     delete_on_termination = true
   }
@@ -64,7 +64,7 @@ resource "aws_instance" "ingress_worker" {
   })
 
   root_block_device {
-    volume_size           = 20
+    volume_size           = var.worker_root_volume_gb
     volume_type           = "gp3"
     delete_on_termination = true
   }
@@ -102,7 +102,7 @@ resource "aws_instance" "egress_worker" {
   })
 
   root_block_device {
-    volume_size           = 20
+    volume_size           = var.worker_root_volume_gb
     volume_type           = "gp3"
     delete_on_termination = true
   }

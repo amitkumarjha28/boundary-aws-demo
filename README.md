@@ -19,13 +19,13 @@ graph TD
 
     subgraph AWS_VPC ["AWS VPC (10.0.0.0/16)"]
         subgraph Public_Subnet ["Public Subnet (10.0.1.0/24)"]
-            Controller["Boundary Controller<br/>(API: 9200 | Cluster: 9201)<br/>t3.micro"]
-            IngressWorker["Boundary Ingress Worker<br/>(Proxy: 9202)<br/>t3.micro"]
+            Controller["Boundary Controller<br/>(API: 9200 | Cluster: 9201)<br/>t3.xlarge"]
+            IngressWorker["Boundary Ingress Worker<br/>(Proxy: 9202)<br/>t3.large"]
             NAT["Low-Cost NAT Instance<br/>t3.micro (~$8/mo)"]
         end
 
         subgraph Private_Subnet ["Private Subnet (10.0.2.0/24)"]
-            EgressWorker["Boundary Egress Worker<br/>(Proxy: 9202)<br/>t3.micro"]
+            EgressWorker["Boundary Egress Worker<br/>(Proxy: 9202)<br/>t3.large"]
             LinuxTarget["Linux Target (SSH 22 & Web 8080)<br/>Amazon Linux 2023"]
             WinTarget["Windows Target (RDP 3389)<br/>Windows Server 2022"]
             RDSTarget["RDS PostgreSQL (Port 5432)<br/>db.t4g.micro"]
@@ -52,7 +52,7 @@ graph TD
 1. **Multi-hop worker routing**: `Client → Ingress Worker (public) → Egress Worker (private, no public IP) → Target`.
 2. **Zero-trust isolation**: targets have no public IP. Security groups accept target ports (22, 3389, 5432, 8080) **only from the Egress Worker SG**.
 3. **systemd services**: controller and workers run as a dedicated `boundary` user with auto-restart and journald logging.
-4. **Cost optimization**: a t3.micro NAT instance instead of a NAT Gateway (toggle `enable_nat_gateway`), and one `db.t4g.micro` serves both the Boundary DB and the demo `appdb`. About **$0.12–0.16 / hour** including the ops instance.
+4. **Cost optimization**: a t3.micro NAT instance instead of a NAT Gateway (toggle `enable_nat_gateway`), and one `db.t4g.micro` serves both the Boundary DB and the demo `appdb`. With the default node sizes (controller `t3.xlarge` 4 vCPU/16 GiB, workers `t3.large` 2 vCPU/8 GiB, 50 GB disks) the environment costs roughly **$0.45–0.50 / hour**. Downsize via the `instance_type_*` variables for a cheaper demo.
 5. **No secrets in the repo**: all target and user passwords are generated per deployment with `random_password` and exposed only as sensitive outputs. The Enterprise license is a sensitive workspace variable (`*.hclic` is gitignored).
 
 ---
