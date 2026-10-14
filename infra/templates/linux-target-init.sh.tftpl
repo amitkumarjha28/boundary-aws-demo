@@ -3,6 +3,14 @@ set -euxo pipefail
 
 echo "===> Initializing Linux Target (SSH & Internal Web Portal)..."
 
+# Private subnet: wait for outbound internet via the NAT instance, which may
+# still be booting when this instance starts
+for i in {1..60}; do
+  if curl -s -m 5 -o /dev/null https://rpm.releases.hashicorp.com; then break; fi
+  echo "Waiting for outbound internet via NAT ($i/60)..."
+  sleep 5
+done
+
 # 1. Setup Demo User for Boundary SSH Target
 USER_NAME="boundary-user"
 USER_PASS="${linux_ssh_password}"

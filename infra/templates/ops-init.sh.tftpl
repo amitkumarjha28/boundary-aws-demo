@@ -3,6 +3,14 @@ set -euxo pipefail
 
 echo "===> Initializing Ops instance (OpenLDAP, Prometheus, Grafana)..."
 
+# Private subnet: wait for outbound internet via the NAT instance, which may
+# still be booting when this instance starts
+for i in {1..60}; do
+  if curl -s -m 5 -o /dev/null https://rpm.releases.hashicorp.com; then break; fi
+  echo "Waiting for outbound internet via NAT ($i/60)..."
+  sleep 5
+done
+
 # Install Docker and the Compose plugin
 dnf install -y docker
 systemctl enable --now docker

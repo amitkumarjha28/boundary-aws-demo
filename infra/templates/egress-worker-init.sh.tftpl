@@ -21,6 +21,14 @@ trap 'rc=$?; if [ $rc -ne 0 ]; then publish_diag "FAILED(exit $rc)"; fi' EXIT
 
 echo "===> Initializing Boundary Egress Worker setup..."
 
+# Private subnet: wait for outbound internet via the NAT instance, which may
+# still be booting when this instance starts
+for i in {1..60}; do
+  if curl -s -m 5 -o /dev/null https://rpm.releases.hashicorp.com; then break; fi
+  echo "Waiting for outbound internet via NAT ($i/60)..."
+  sleep 5
+done
+
 # Install dependencies
 dnf install -y yum-utils jq nc unzip
 
