@@ -80,7 +80,7 @@ resource "aws_subnet" "private_secondary" {
 }
 
 # -------------------------------------------------------------------------
-# Low-Cost NAT: Choose between t3.nano NAT Instance or AWS Managed NAT Gateway
+# Low-Cost NAT: Choose between t3.micro NAT Instance or AWS Managed NAT Gateway
 # -------------------------------------------------------------------------
 
 # Option A: AWS Managed NAT Gateway

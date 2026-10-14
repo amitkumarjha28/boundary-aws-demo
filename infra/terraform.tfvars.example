@@ -14,7 +14,7 @@ private_subnet_secondary_cidr = "10.0.3.0/24"
 authorized_client_cidr = "0.0.0.0/0"
 
 # Cost Optimization:
-# Keep false to use a low-cost t3.nano NAT instance (~$3/mo)
+# Keep false to use a low-cost t3.micro NAT instance (~$8/mo)
 # Set true to use AWS Managed NAT Gateway (~$32/mo)
 enable_nat_gateway = false
 
@@ -24,7 +24,7 @@ instance_type_ingress_worker = "t3.micro"
 instance_type_egress_worker  = "t3.micro"
 instance_type_linux_target   = "t3.micro"
 instance_type_windows_target = "t3.small" # Minimum 2GB RAM required for Windows
-instance_type_nat            = "t3.nano"
+instance_type_nat            = "t3.micro" # t3.nano (512 MB) runs out of memory during dnf install
 
 # Database
 rds_instance_class    = "db.t4g.micro"

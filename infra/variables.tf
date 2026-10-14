@@ -47,7 +47,7 @@ variable "authorized_client_cidr" {
 }
 
 variable "enable_nat_gateway" {
-  description = "If true, provisions AWS Managed NAT Gateway (~$32/mo). If false, provisions a cost-effective t3.nano NAT instance (~$3/mo)."
+  description = "If true, provisions AWS Managed NAT Gateway (~$32/mo). If false, provisions a cost-effective t3.micro NAT instance (~$8/mo)."
   type        = bool
   default     = false
 }
@@ -83,9 +83,9 @@ variable "instance_type_windows_target" {
 }
 
 variable "instance_type_nat" {
-  description = "EC2 instance size for NAT Instance if enable_nat_gateway is false"
+  description = "EC2 instance size for NAT Instance if enable_nat_gateway is false. Minimum t3.micro: t3.nano (512 MB) is OOM-killed by dnf during setup."
   type        = string
-  default     = "t3.nano"
+  default     = "t3.micro"
 }
 
 variable "rds_instance_class" {

@@ -22,7 +22,7 @@ The `boundary-demo-infra` workspace needs the `AWS_ACCESS_KEY_ID` / `AWS_SECRET_
 ## What gets created
 
 - VPC with a public subnet and two private subnets
-- t3.nano NAT instance (or a NAT Gateway with `enable_nat_gateway = true`)
+- t3.micro NAT instance (or a NAT Gateway with `enable_nat_gateway = true`)
 - Boundary **Enterprise** controller and ingress worker (public), egress worker (private)
 - Private S3 bucket for session recordings (gateway VPC endpoint, dynamic IAM credentials)
 - Private targets: Linux (SSH + web on 8080), Windows Server 2022 (RDP), RDS PostgreSQL
