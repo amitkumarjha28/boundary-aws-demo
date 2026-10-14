@@ -135,21 +135,29 @@ resource "aws_iam_role_policy" "worker" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid    = "SessionRecordingStorage"
-      Effect = "Allow"
-      Action = [
-        "s3:PutObject",
-        "s3:GetObject",
-        "s3:GetObjectAttributes",
-        "s3:DeleteObject",
-        "s3:ListBucket",
-      ]
-      Resource = [
-        aws_s3_bucket.session_recordings.arn,
-        "${aws_s3_bucket.session_recordings.arn}/*",
-      ]
-    }]
+    Statement = [
+      {
+        Sid      = "PublishBootDiagnostics"
+        Effect   = "Allow"
+        Action   = ["ssm:PutParameter"]
+        Resource = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.diag_parameter_path}/*-worker"
+      },
+      {
+        Sid    = "SessionRecordingStorage"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:GetObjectAttributes",
+          "s3:DeleteObject",
+          "s3:ListBucket",
+        ]
+        Resource = [
+          aws_s3_bucket.session_recordings.arn,
+          "${aws_s3_bucket.session_recordings.arn}/*",
+        ]
+      },
+    ]
   })
 }
 

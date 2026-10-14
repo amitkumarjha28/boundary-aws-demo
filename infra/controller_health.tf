@@ -15,7 +15,7 @@ resource "terraform_data" "controller_ready" {
         fi
         echo "Waiting for controller API ($i/60)..."; sleep 10
       done
-      echo "Controller API did not come up. See output controller_boot_diagnostics."
+      echo "Controller API did not come up. See output boot_diagnostics."
       exit 1
     EOT
   }

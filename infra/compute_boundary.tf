@@ -59,6 +59,8 @@ resource "aws_instance" "ingress_worker" {
     boundary_version      = var.boundary_version
     controller_private_ip = aws_instance.controller.private_ip
     worker_auth_kms_key   = local.boundary_worker_auth_key
+    aws_region            = var.aws_region
+    diag_parameter        = "${local.diag_parameter_path}/ingress-worker"
   })
 
   root_block_device {
@@ -95,6 +97,8 @@ resource "aws_instance" "egress_worker" {
     controller_private_ip     = aws_instance.controller.private_ip
     ingress_worker_private_ip = aws_instance.ingress_worker.private_ip
     worker_auth_kms_key       = local.boundary_worker_auth_key
+    aws_region                = var.aws_region
+    diag_parameter            = "${local.diag_parameter_path}/egress-worker"
   })
 
   root_block_device {

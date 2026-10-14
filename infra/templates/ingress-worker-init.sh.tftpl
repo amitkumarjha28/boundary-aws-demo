@@ -1,6 +1,24 @@
 #!/bin/bash
 set -euxo pipefail
 
+# Boot diagnostics: publish a scrubbed log tail to SSM so failures are visible
+# from HCP Terraform (output boot_diagnostics) without shell access.
+# Lines that could carry secrets (passwords, keys) are dropped.
+publish_diag() {
+  set +e
+  {
+    echo "status=$1 time=$(date -u +%FT%TZ) $(boundary version 2>/dev/null | grep 'Version Number' | tr -s ' ')"
+    echo "--- boundary-worker service: $(systemctl is-active boundary-worker 2>&1)"
+    journalctl -u boundary-worker -n 60 --no-pager -o cat 2>/dev/null | grep -E '^[^{]|"error"|upstream|connect' | tail -15 | cut -c1-300
+    echo "--- user-data tail"
+    tail -n 40 /var/log/cloud-init-output.log | cut -c1-300
+  } | grep -viE 'password|secret|key +=' | tail -c 3800 > /tmp/boot-diag.txt
+  aws ssm put-parameter --region "${aws_region}" --name "${diag_parameter}" --type SecureString \
+    --overwrite --value "file:///tmp/boot-diag.txt" > /dev/null 2>&1
+  set -e
+}
+trap 'rc=$?; if [ $rc -ne 0 ]; then publish_diag "FAILED(exit $rc)"; fi' EXIT
+
 echo "===> Initializing Boundary Ingress Worker setup..."
 
 # Install dependencies
@@ -122,3 +140,7 @@ systemctl enable boundary-worker
 systemctl start boundary-worker
 
 echo "===> Boundary Ingress Worker started successfully!"
+
+# Report whether the worker connected upstream (it can fail after start)
+sleep 60
+publish_diag "COMPLETED"

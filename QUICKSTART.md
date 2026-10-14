@@ -48,7 +48,7 @@ Open the `boundary_addr` output → **Demo-Org** → **corp-password-auth**, and
 
 | Problem | Check |
 | :--- | :--- |
-| Infra apply fails on `terraform_data.controller_ready` | The controller did not come up. Read `terraform -chdir=infra output -raw controller_boot_diagnostics` (scrubbed boot log), or open an SSM session to the controller and check `/var/log/cloud-init-output.log` |
+| Infra apply fails on `terraform_data.controller_ready` | The controller did not come up. Read `terraform -chdir=infra output -json boot_diagnostics` (scrubbed boot log), or open an SSM session to the controller and check `/var/log/cloud-init-output.log` |
 | Config run can't reach controller | `authorized_client_cidr` must allow HCP Terraform runners (default `0.0.0.0/0`) |
 | Config run: remote state access denied | Enable remote state sharing on `boundary-demo-infra` for `boundary-demo-config` |
 | Stale demo IDs in menu | Delete `boundary_demo_targets.json` and re-run the menu |

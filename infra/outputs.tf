@@ -146,7 +146,10 @@ output "session_recording_role_arn" {
   value       = aws_iam_role.worker.arn
 }
 
-output "controller_boot_diagnostics" {
-  description = "Scrubbed tail of the controller's last boot log (secrets are filtered out on the instance)"
-  value       = nonsensitive(try(data.aws_ssm_parameters_by_path.diag.values[0], "no boot diagnostics published yet"))
+output "boot_diagnostics" {
+  description = "Scrubbed tail of each Boundary node's last boot log, keyed by node (secrets are filtered out on the instance)"
+  value = nonsensitive(zipmap(
+    [for n in data.aws_ssm_parameters_by_path.diag.names : basename(n)],
+    data.aws_ssm_parameters_by_path.diag.values,
+  ))
 }
