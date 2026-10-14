@@ -20,9 +20,12 @@ locals {
         sysctl net.ipv4.ip_forward; ip -br addr; ip route; nft list ruleset 2>&1
         tail -n 25 /var/log/cloud-init-output.log
       else
-        journalctl -u $SVC --since -30min --no-pager -o cat 2>&1 | grep -E '^[^{]|"error"' | tail -12 | cut -c1-350
-        dmesg 2>/dev/null | grep -iE 'oom|killed process' | tail -5
-        ps -eo rss,comm --sort=-rss | head -6
+        echo "--- last error events"
+        journalctl -u $SVC --since -90min --no-pager -o cat 2>&1 | grep '"type":"error"' | tail -4 | jq -c '{t: .time, op: .data.op, err: .data.error, info: .data.info}' 2>/dev/null | cut -c1-900
+        echo "--- last system events"
+        journalctl -u $SVC --since -90min --no-pager -o cat 2>&1 | grep '"type":"system"' | tail -6 | jq -c '{t: .time, op: .data.op, msg: .data.data.msg}' 2>/dev/null | cut -c1-300
+        echo "--- connections to cluster/proxy ports"
+        ss -tnp 2>/dev/null | grep -E ':920[12]' | head -8
       fi
     } 2>&1 | grep -viE 'password|secret|key +=|token' | tail -c 3800 > /tmp/live-diag.txt
     aws ssm put-parameter --region ${var.aws_region} --name ${local.diag_parameter_path}/$NAME --type SecureString --overwrite --value file:///tmp/live-diag.txt
