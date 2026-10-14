@@ -4,6 +4,11 @@
 
 # License: kept out of git and user-data. Set var.boundary_license as a
 # sensitive workspace variable; the controller reads it from SSM at boot.
+locals {
+  diag_parameter_path = "/${var.environment}/boundary/diag"
+  diag_parameter_name = "${local.diag_parameter_path}/controller"
+}
+
 resource "aws_ssm_parameter" "boundary_license" {
   name        = "/${var.environment}/boundary/license"
   description = "Boundary Enterprise license"
@@ -103,6 +108,12 @@ resource "aws_iam_role_policy" "controller" {
         Action   = ["sts:AssumeRole"]
         Resource = aws_iam_role.session_recording.arn
       },
+      {
+        Sid      = "PublishBootDiagnostics"
+        Effect   = "Allow"
+        Action   = ["ssm:PutParameter"]
+        Resource = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.diag_parameter_name}"
+      },
     ]
   })
 }
@@ -183,4 +194,14 @@ resource "aws_iam_role_policy" "session_recording" {
       ]
     }]
   })
+}
+
+# -------------------------------------------------------------------------
+# Controller boot diagnostics (written by the controller's user-data)
+# Read at plan time, so a run after a failed boot shows the previous boot.
+# -------------------------------------------------------------------------
+
+data "aws_ssm_parameters_by_path" "diag" {
+  path            = local.diag_parameter_path
+  with_decryption = true
 }

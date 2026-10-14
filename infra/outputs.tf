@@ -145,3 +145,8 @@ output "session_recording_role_arn" {
   description = "IAM role the Boundary AWS storage plugin assumes for session recording"
   value       = aws_iam_role.session_recording.arn
 }
+
+output "controller_boot_diagnostics" {
+  description = "Scrubbed tail of the controller's last boot log (secrets are filtered out on the instance)"
+  value       = nonsensitive(try(data.aws_ssm_parameters_by_path.diag.values[0], "no boot diagnostics published yet"))
+}

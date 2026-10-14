@@ -25,6 +25,7 @@ resource "aws_instance" "controller" {
     bsr_kms_key         = local.boundary_bsrm_key
     aws_region          = var.aws_region
     license_parameter   = aws_ssm_parameter.boundary_license.name
+    diag_parameter      = local.diag_parameter_name
   })
 
   root_block_device {
@@ -71,6 +72,11 @@ resource "aws_instance" "ingress_worker" {
     Role = "IngressWorker"
   }
 
+  lifecycle {
+    # user-data embeds these instances' private IPs; replace together
+    replace_triggered_by = [aws_instance.controller.id]
+  }
+
   depends_on = [aws_instance.controller]
 }
 
@@ -100,6 +106,11 @@ resource "aws_instance" "egress_worker" {
   tags = {
     Name = "${var.environment}-boundary-egress-worker"
     Role = "EgressWorker"
+  }
+
+  lifecycle {
+    # user-data embeds these instances' private IPs; replace together
+    replace_triggered_by = [aws_instance.controller.id, aws_instance.ingress_worker.id]
   }
 
   depends_on = [

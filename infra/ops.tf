@@ -122,6 +122,15 @@ resource "aws_instance" "ops" {
     Role = "Ops"
   }
 
+  lifecycle {
+    # user-data embeds these instances' private IPs; replace together
+    replace_triggered_by = [
+      aws_instance.controller.id,
+      aws_instance.ingress_worker.id,
+      aws_instance.egress_worker.id,
+    ]
+  }
+
   depends_on = [
     aws_route.private_nat_instance,
     aws_route.private_nat_gateway

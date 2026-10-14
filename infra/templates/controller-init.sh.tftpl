@@ -1,6 +1,24 @@
 #!/bin/bash
 set -euxo pipefail
 
+# Boot diagnostics: publish a scrubbed log tail to SSM so failures are visible
+# from HCP Terraform (output controller_boot_diagnostics) without shell access.
+# Lines that could carry secrets (passwords, keys, DB URLs) are dropped.
+publish_diag() {
+  set +e
+  {
+    echo "status=$1 time=$(date -u +%FT%TZ) $(boundary version 2>/dev/null | grep 'Version Number' | tr -s ' ')"
+    echo "--- boundary-controller service: $(systemctl is-active boundary-controller 2>&1)"
+    journalctl -u boundary-controller -n 40 --no-pager -o cat 2>/dev/null | grep -E '^[^{]|"error"' | tail -15 | cut -c1-300
+    echo "--- user-data tail"
+    tail -n 40 /var/log/cloud-init-output.log | cut -c1-300
+  } | grep -viE 'PGPASSWORD|postgresql://|password|secret|key +=' | tail -c 3800 > /tmp/boot-diag.txt
+  aws ssm put-parameter --region "${aws_region}" --name "${diag_parameter}" --type SecureString \
+    --overwrite --value "file:///tmp/boot-diag.txt" > /dev/null 2>&1
+  set -e
+}
+trap 'rc=$?; if [ $rc -ne 0 ]; then publish_diag "FAILED(exit $rc)"; fi' EXIT
+
 echo "===> Initializing Boundary Controller setup..."
 
 # Install dependencies
@@ -224,3 +242,7 @@ systemctl enable boundary-controller
 systemctl start boundary-controller
 
 echo "===> Boundary Controller service started successfully!"
+
+# Report whether the service is actually serving (it can crash-loop after start)
+sleep 45
+publish_diag "COMPLETED api_http=$(curl -s -o /dev/null -w '%%{http_code}' http://127.0.0.1:9200/ || true)"
