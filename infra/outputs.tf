@@ -85,6 +85,7 @@ output "quick_start_summary" {
        - Public Subnet:  Controller (${aws_instance.controller.public_ip}), Ingress Worker (${aws_instance.ingress_worker.public_ip})
        - Private Subnet: Egress Worker (${aws_instance.egress_worker.private_ip})
        - Private Targets: Linux (${aws_instance.linux_target.private_ip}), Windows (${aws_instance.windows_target.private_ip}), RDS (${aws_db_instance.postgres.address})
+       - Ops (private):  OpenLDAP, Prometheus, Grafana (${aws_instance.ops.private_ip}) - reach via Boundary targets
        - Worker Multi-Hop: Client -> Ingress Worker (Public) -> Egress Worker (Private) -> Targets
 
     4. Target Use Cases Configured:
@@ -94,4 +95,38 @@ output "quick_start_summary" {
        - Internal Web Portal Target (Port 8080)
     ========================================================================
   EOT
+}
+
+output "ops_private_ip" {
+  description = "Private IP of the Ops instance (OpenLDAP :389, Prometheus :9090, Grafana :3000)"
+  value       = aws_instance.ops.private_ip
+}
+
+output "ldap" {
+  description = "LDAP connection settings for the Boundary LDAP auth method"
+  value = {
+    url      = "ldap://${aws_instance.ops.private_ip}:389"
+    base_dn  = local.ldap_base_dn
+    user_dn  = "ou=people,${local.ldap_base_dn}"
+    group_dn = "ou=groups,${local.ldap_base_dn}"
+    bind_dn  = "cn=readonly,${local.ldap_base_dn}"
+  }
+}
+
+output "ldap_bind_password" {
+  description = "Password of the read-only LDAP bind user used by Boundary"
+  value       = random_password.ldap_readonly.result
+  sensitive   = true
+}
+
+output "ldap_users" {
+  description = "Demo LDAP users with their group and generated password"
+  value       = { for u, g in var.ldap_users : u => { group = g, password = random_password.ldap_user[u].result } }
+  sensitive   = true
+}
+
+output "grafana_admin_password" {
+  description = "Grafana 'admin' password (Grafana is reached via the Boundary grafana target)"
+  value       = random_password.grafana_admin.result
+  sensitive   = true
 }

@@ -43,3 +43,18 @@ output "user_passwords" {
   value       = { for u in local.demo_users : u => random_password.user[u].result }
   sensitive   = true
 }
+
+output "ldap_auth_method_id" {
+  description = "LDAP Auth Method ID (primary for Demo-Org)"
+  value       = boundary_auth_method_ldap.corp.id
+}
+
+output "grafana_target_id" {
+  description = "Boundary Target ID for Grafana (admins only)"
+  value       = boundary_target.grafana.id
+}
+
+output "prometheus_target_id" {
+  description = "Boundary Target ID for Prometheus (admins only)"
+  value       = boundary_target.prometheus.id
+}

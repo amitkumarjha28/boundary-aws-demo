@@ -1,0 +1,151 @@
+#!/bin/bash
+set -euxo pipefail
+
+echo "===> Initializing Ops instance (OpenLDAP, Prometheus, Grafana)..."
+
+# Install Docker and the Compose plugin
+dnf install -y docker
+systemctl enable --now docker
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+mkdir -p /opt/ops/{ldif,prometheus,grafana/provisioning/datasources,grafana/provisioning/dashboards,grafana/dashboards}
+cd /opt/ops
+
+# ---------------------------------------------------------------------------
+# OpenLDAP seed data: people + boundary-admins / boundary-users groups
+# ---------------------------------------------------------------------------
+cat << 'EOF' > ldif/50-boundary-demo.ldif
+${ldap_bootstrap_ldif}
+EOF
+
+# ---------------------------------------------------------------------------
+# Prometheus: scrape the Boundary ops listener on every node
+# ---------------------------------------------------------------------------
+cat << 'EOF' > prometheus/prometheus.yml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: boundary-controller
+    static_configs:
+      - targets: ["${controller_private_ip}:9203"]
+        labels: { role: controller }
+
+  - job_name: boundary-workers
+    static_configs:
+      - targets: ["${ingress_worker_private_ip}:9203"]
+        labels: { role: ingress-worker }
+      - targets: ["${egress_worker_private_ip}:9203"]
+        labels: { role: egress-worker }
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+EOF
+
+# ---------------------------------------------------------------------------
+# Grafana: Prometheus + Boundary data warehouse (read-only) datasources
+# ---------------------------------------------------------------------------
+cat << 'EOF' > grafana/provisioning/datasources/datasources.yml
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  - name: Boundary Warehouse
+    uid: boundary-wh
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: ${rds_endpoint}
+    user: grafana_ro
+    jsonData:
+      database: boundary
+      sslmode: disable
+      postgresVersion: 1500
+    secureJsonData:
+      password: "${grafana_db_password}"
+EOF
+
+cat << 'EOF' > grafana/provisioning/dashboards/dashboards.yml
+apiVersion: 1
+providers:
+  - name: boundary
+    folder: Boundary
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards
+EOF
+
+cat << 'EOF' > grafana/dashboards/boundary-metrics.json
+${dashboard_boundary_metrics}
+EOF
+
+cat << 'EOF' > grafana/dashboards/user-activity.json
+${dashboard_user_activity}
+EOF
+
+# ---------------------------------------------------------------------------
+# Docker Compose stack
+# ---------------------------------------------------------------------------
+cat << 'EOF' > docker-compose.yml
+services:
+  openldap:
+    image: osixia/openldap:1.5.0
+    command: --copy-service
+    restart: unless-stopped
+    ports: ["389:389"]
+    # slapd allocates per file descriptor; Docker's default limit makes it hang
+    ulimits:
+      nofile: { soft: 1024, hard: 1024 }
+    environment:
+      LDAP_ORGANISATION: "Boundary Demo"
+      LDAP_DOMAIN: "${ldap_domain}"
+      LDAP_ADMIN_PASSWORD: "${ldap_admin_password}"
+      LDAP_READONLY_USER: "true"
+      LDAP_READONLY_USER_USERNAME: "readonly"
+      LDAP_READONLY_USER_PASSWORD: "${ldap_readonly_password}"
+      LDAP_TLS: "false"
+    volumes:
+      - ./ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom:ro
+
+  prometheus:
+    image: prom/prometheus:v2.53.2
+    restart: unless-stopped
+    ports: ["9090:9090"]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+  grafana:
+    image: grafana/grafana-oss:11.2.2
+    restart: unless-stopped
+    ports: ["3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${grafana_admin_password}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/user-activity.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  prometheus-data:
+  grafana-data:
+EOF
+
+# Secrets readable only by root, except Grafana's files (container runs as uid 472)
+chmod 600 docker-compose.yml ldif/*.ldif
+chown -R 472:0 grafana
+chmod 600 grafana/provisioning/datasources/datasources.yml
+
+docker compose up -d
+
+echo "===> Ops instance ready: LDAP :389, Prometheus :9090, Grafana :3000"

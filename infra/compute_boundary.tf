@@ -16,6 +16,7 @@ resource "aws_instance" "controller" {
     db_username         = var.rds_username
     db_password         = local.rds_password
     demo_db_password    = local.demo_db_password
+    grafana_db_password = random_password.grafana_db.result
     db_endpoint         = aws_db_instance.postgres.endpoint
     root_kms_key        = local.boundary_root_key
     worker_auth_kms_key = local.boundary_worker_auth_key

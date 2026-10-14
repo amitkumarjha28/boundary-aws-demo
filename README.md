@@ -29,6 +29,7 @@ graph TD
             LinuxTarget["Linux Target (SSH 22 & Web 8080)<br/>Amazon Linux 2023"]
             WinTarget["Windows Target (RDP 3389)<br/>Windows Server 2022"]
             RDSTarget["RDS PostgreSQL (Port 5432)<br/>db.t4g.micro"]
+            Ops["Ops Instance (t3.small)<br/>OpenLDAP 389 | Prometheus 9090 | Grafana 3000"]
         end
     end
 
@@ -40,6 +41,10 @@ graph TD
     EgressWorker -->|"HTTP (8080)"| LinuxTarget
     EgressWorker -->|"PostgreSQL (5432)"| RDSTarget
     Controller -->|"State Storage"| RDSTarget
+    Controller -->|"LDAP auth (389)"| Ops
+    EgressWorker -->|"Grafana / Prometheus"| Ops
+    Ops -.->|"scrape :9203 metrics"| Controller
+    Ops -.->|"read-only warehouse queries"| RDSTarget
 ```
 
 **Highlights**
@@ -47,7 +52,7 @@ graph TD
 1. **Multi-hop worker routing**: `Client → Ingress Worker (public) → Egress Worker (private, no public IP) → Target`.
 2. **Zero-trust isolation**: targets have no public IP. Security groups accept target ports (22, 3389, 5432, 8080) **only from the Egress Worker SG**.
 3. **systemd services**: controller and workers run as a dedicated `boundary` user with auto-restart and journald logging.
-4. **Cost optimization**: a t3.nano NAT instance instead of a NAT Gateway (toggle `enable_nat_gateway`), and one `db.t4g.micro` serves both the Boundary DB and the demo `appdb`. About **$0.10–0.14 / hour**.
+4. **Cost optimization**: a t3.nano NAT instance instead of a NAT Gateway (toggle `enable_nat_gateway`), and one `db.t4g.micro` serves both the Boundary DB and the demo `appdb`. About **$0.12–0.16 / hour** including the ops instance.
 5. **No secrets in the repo**: all target and user passwords are generated per deployment with `random_password` and exposed only as sensitive outputs.
 
 ---
@@ -68,14 +73,16 @@ graph TD
 │   ├── compute_boundary.tf      # controller, ingress & egress workers
 │   ├── compute_targets.tf       # Linux and Windows targets
 │   ├── controller_health.tf     # waits for the controller API before finishing
+│   ├── ops.tf                   # private ops instance: OpenLDAP, Prometheus, Grafana
 │   ├── outputs.tf
 │   ├── terraform.tfvars.example
-│   └── templates/               # EC2 user-data (*.tftpl)
+│   └── templates/               # EC2 user-data (*.tftpl), LDAP seed, grafana/ dashboards
 │
 ├── boundary-config/             # HCP workspace: boundary-demo-config (Boundary provider)
 │   ├── versions.tf              # cloud block, reads infra outputs via remote state
 │   ├── variables.tf
-│   ├── main.tf                  # scopes, auth, users, hosts, creds, targets, RBAC
+│   ├── main.tf                  # scopes, password auth, users, hosts, creds, targets, RBAC
+│   ├── ldap.tf                  # LDAP auth method, managed groups, Grafana/Prometheus targets
 │   └── outputs.tf
 │
 ├── scripts/
@@ -148,9 +155,54 @@ boundary authenticate password -auth-method-id="$AUTH_METHOD_ID" -login-name=adm
 | Linux SSH (22) | `boundary connect ssh -target-id $(terraform -chdir=boundary-config output -raw linux_ssh_target_id)` |
 | Windows RDP (3389) | `boundary connect rdp -target-id $(terraform -chdir=boundary-config output -raw windows_rdp_target_id)` |
 | RDS PostgreSQL (5432) | `boundary connect postgres -target-id $(terraform -chdir=boundary-config output -raw rds_postgres_target_id) -dbname appdb` |
-| Web Portal (8080) | `boundary connect http -target-id $(terraform -chdir=boundary-config output -raw web_target_id)` |
+| Web Portal (8080) | `boundary connect -listen-port 8080 -target-id $(terraform -chdir=boundary-config output -raw web_target_id)`, then open http://127.0.0.1:8080 |
 
 Inside `psql`, run `SELECT * FROM demo_customers;`. For RDP, log in as `Administrator` with the `windows_admin_password` output.
+
+---
+
+## Authentication
+
+Demo-Org has two auth methods:
+
+| Auth method | Type | Who | How |
+| :--- | :--- | :--- | :--- |
+| `corp-ldap` (**primary**) | LDAP → OpenLDAP on the ops instance | Directory users `alice`, `bob` (group `boundary-admins`) and `carol`, `dave`, `erin` (group `boundary-users`) | `boundary authenticate ldap -auth-method-id <ldap_auth_method_id> -login-name alice` |
+| `corp-password-auth` | Password (stored in Boundary's DB) | Local personas `admin`, `devops`, `sysadmin`, `analyst` | `boundary authenticate password -auth-method-id <auth_method_id> -login-name admin` |
+
+**How LDAP login works:** the controller binds to OpenLDAP as `cn=readonly` and looks up `uid=<login>` under `ou=people`. It verifies the password with a bind as that user, then reads the user's groups under `ou=groups` (`groupOfNames`, attribute `cn`). Boundary **managed groups** map LDAP group names to Boundary principals:
+
+| LDAP group | Managed group | Boundary role | Access |
+| :--- | :--- | :--- | :--- |
+| `boundary-admins` | `ldap-boundary-admins` | `org-admin-role` | Everything in Demo-Org, including the Grafana and Prometheus targets |
+| `boundary-users` | `ldap-boundary-users` | `ldap-users-role` | Connect to SSH, RDP, Postgres and Web targets |
+
+Because `corp-ldap` is primary for the org, Boundary creates a user automatically on the first LDAP login. To add someone, add them to `ldap_users` in [`infra/variables.tf`](infra/variables.tf) (or as a workspace variable). Their LDAP group decides their access, so you don't need to change any Boundary roles.
+
+```bash
+terraform -chdir=infra output -json ldap_users    # LDAP logins, groups and passwords
+```
+
+Terraform itself never logs in as a user: it uses the recovery KMS key. `boundary database init` also creates a bootstrap password auth method in the **global** scope, whose admin credentials are written only to `/etc/boundary.d/db-init.log` on the controller.
+
+---
+
+## Monitoring & User Activity
+
+The ops instance runs **Prometheus** and **Grafana**. Neither has a public IP: admins reach them **through Boundary** (menu options `g` / `p`, or `boundary connect -listen-port 3000 -target-id <grafana_target_id>`), then open http://127.0.0.1:3000 and log in as `admin` with `terraform -chdir=infra output -raw grafana_admin_password`.
+
+Two dashboards are provisioned in the **Boundary** folder:
+
+| Dashboard | Source | Shows |
+| :--- | :--- | :--- |
+| **Boundary - User Activity** (home) | Boundary data warehouse in Postgres (read-only `grafana_ro` role, `wh_*` tables only) | Who logged in, how many times, approx. active hours per user, session hours per user and target, live sessions, login log |
+| **Boundary - Cluster Metrics** | Prometheus scraping the `:9203/metrics` ops listener on the controller and both workers | Node up/down, API rate/latency/status codes, authentication requests, proxy connections and throughput per worker, cluster gRPC |
+
+**Why two sources:** Boundary's Prometheus metrics are aggregate and carry no user labels. Per-user history comes from Boundary's built-in data warehouse:
+
+- `wh_auth_token_accumulating_fact`: one row per login, with issue time and approximate last activity. "Active hours" is the time from login to last token use. Boundary only updates the last-use time periodically, so treat it as approximate.
+- `wh_session_accumulating_fact`: one row per session, with exact active and terminated times and bytes transferred.
+- `wh_user_dimension`: user, auth method and account. For LDAP users, the login name is shown.
 
 ---
 
@@ -162,6 +214,8 @@ Inside `psql`, run `SELECT * FROM demo_customers;`. For RDP, log in as `Administ
 | **DevOps** | `devops` | Linux SSH (22), Web Portal (8080) |
 | **SysAdmin** | `sysadmin` | Windows RDP (3389) |
 | **Data Analyst** | `analyst` | RDS PostgreSQL (5432) |
+| **LDAP admins** | `alice`, `bob` | Everything, plus Grafana / Prometheus |
+| **LDAP users** | `carol`, `dave`, `erin` | SSH, RDP, Postgres, Web |
 
 Log in as `analyst`. `boundary connect postgres ...` succeeds, while `boundary connect ssh ...` is denied by policy.
 
@@ -178,7 +232,7 @@ aws ssm start-session --target "$ID"
 # then: sudo journalctl -u boundary-controller -n 50
 ```
 
-Use `Role` tag values `IngressWorker` / `EgressWorker` and the `boundary-worker` unit for the workers. User-data logs are in `/var/log/cloud-init-output.log`.
+Use `Role` tag values `IngressWorker` / `EgressWorker` and the `boundary-worker` unit for the workers. On the `Ops` instance, run `sudo docker compose -f /opt/ops/docker-compose.yml ps` / `logs openldap`. User-data logs are in `/var/log/cloud-init-output.log`.
 
 ---
 
@@ -195,4 +249,4 @@ Destroy in reverse order to stop AWS charges:
 
 ## Security Notes (demo only)
 
-This is a demo, not a production reference: TLS is disabled on Boundary listeners and on RDS (`sslmode=disable`), the controller API is open to `authorized_client_cidr`, AEAD keys are kept in Terraform state rather than a KMS, and the Linux target allows SSH password auth. HCP Terraform encrypts state at rest. Restrict access to the workspaces accordingly.
+This is a demo, not a production reference: TLS is disabled on Boundary listeners and on RDS (`sslmode=disable`), the controller API is open to `authorized_client_cidr`, AEAD keys are kept in Terraform state rather than a KMS, the Linux target allows SSH password auth, and LDAP runs without TLS, with plaintext `userPassword` values. HCP Terraform encrypts state at rest. Restrict access to the workspaces accordingly.

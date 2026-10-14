@@ -248,10 +248,10 @@ resource "boundary_target" "internal_web" {
 # Org Admin Role (full access to the org and its projects)
 resource "boundary_role" "org_admin" {
   name            = "org-admin-role"
-  description     = "Full administrative access to Demo-Org and its projects"
+  description     = "Full administrative access to Demo-Org and its projects (admin user + LDAP boundary-admins)"
   scope_id        = boundary_scope.org.id
   grant_scope_ids = ["this", "descendants"]
-  principal_ids   = [boundary_user.admin.id]
+  principal_ids   = [boundary_user.admin.id, boundary_managed_group_ldap.admins.id]
   grant_strings   = ["ids=*;type=*;actions=*"]
 }
 

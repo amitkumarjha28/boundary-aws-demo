@@ -133,3 +133,26 @@ variable "demo_db_password" {
   default     = null
   sensitive   = true
 }
+
+variable "instance_type_ops" {
+  description = "EC2 instance size for the private ops instance (OpenLDAP, Prometheus, Grafana)"
+  type        = string
+  default     = "t3.small"
+}
+
+variable "ldap_users" {
+  description = "Demo LDAP users mapped to their group. boundary-admins get full org admin in Boundary; boundary-users can connect to the demo targets."
+  type        = map(string)
+  default = {
+    alice = "boundary-admins"
+    bob   = "boundary-admins"
+    carol = "boundary-users"
+    dave  = "boundary-users"
+    erin  = "boundary-users"
+  }
+
+  validation {
+    condition     = alltrue([for g in values(var.ldap_users) : contains(["boundary-admins", "boundary-users"], g)])
+    error_message = "Each LDAP user's group must be \"boundary-admins\" or \"boundary-users\"."
+  }
+}

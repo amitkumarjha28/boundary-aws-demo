@@ -50,6 +50,13 @@ listener "tcp" {
   tls_disable = true
 }
 
+# Ops listener: /health and Prometheus /metrics (scraped by the ops instance)
+listener "tcp" {
+  address     = "0.0.0.0:9203"
+  purpose     = "ops"
+  tls_disable = true
+}
+
 kms "aead" {
   purpose   = "root"
   aead_type = "aes-gcm"
@@ -123,6 +130,26 @@ boundary database init -config /etc/boundary.d/controller.hcl > /etc/boundary.d/
   echo "Boundary DB init returned non-zero (schema may already exist). Checking log:"
   cat /etc/boundary.d/db-init.log || true
 }
+
+# Read-only role for Grafana: SELECT on the Boundary data warehouse (wh_*) tables only
+echo "===> Creating read-only warehouse role for Grafana..."
+PGPASSWORD="${db_password}" psql -h "$DB_HOST" -p "$DB_PORT" -U "${db_username}" -d boundary << 'DBSCRIPT' || true
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'grafana_ro') THEN
+    CREATE ROLE grafana_ro LOGIN PASSWORD '${grafana_db_password}';
+  END IF;
+END $$;
+GRANT CONNECT ON DATABASE boundary TO grafana_ro;
+GRANT USAGE ON SCHEMA public TO grafana_ro;
+DO $$
+DECLARE t text;
+BEGIN
+  FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE 'wh\_%' LOOP
+    EXECUTE format('GRANT SELECT ON public.%I TO grafana_ro', t);
+  END LOOP;
+END $$;
+DBSCRIPT
 
 # Create systemd service unit for Boundary Controller
 cat << 'EOF' > /etc/systemd/system/boundary-controller.service

@@ -1,0 +1,28 @@
+dn: ou=people,${base_dn}
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,${base_dn}
+objectClass: organizationalUnit
+ou: groups
+%{ for name, password in users ~}
+
+dn: uid=${name},ou=people,${base_dn}
+objectClass: inetOrgPerson
+uid: ${name}
+cn: ${title(name)}
+sn: ${title(name)}
+mail: ${name}@${domain}
+userPassword: ${password}
+%{ endfor ~}
+%{ for group, members in groups ~}
+%{ if length(members) > 0 ~}
+
+dn: cn=${group},ou=groups,${base_dn}
+objectClass: groupOfNames
+cn: ${group}
+%{ for m in members ~}
+member: uid=${m},ou=people,${base_dn}
+%{ endfor ~}
+%{ endif ~}
+%{ endfor ~}

@@ -362,4 +362,4 @@ echo -e "${CYAN}4. Connect to RDS PostgreSQL (Private Target):${NC}"
 echo -e "   boundary connect postgres -target-id $TARGET_RDS_ID -dbname appdb\n"
 
 echo -e "${CYAN}5. Connect to Internal Web Application (Private Target):${NC}"
-echo -e "   boundary connect http -target-id $TARGET_WEB_ID\n"
+echo -e "   boundary connect -listen-port 8080 -target-id $TARGET_WEB_ID  (then open http://127.0.0.1:8080)\n"

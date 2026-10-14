@@ -1,0 +1,315 @@
+{
+  "uid": "boundary-user-activity",
+  "title": "Boundary - User Activity",
+  "tags": [
+    "boundary"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "1m",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Users logged in",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "select count(distinct case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end) as \"Users\" from wh_auth_token_accumulating_fact f join wh_user_dimension u on u.key = f.user_key where $__timeFilter(f.auth_token_issued_time)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Logins",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "select count(*) as \"Logins\" from wh_auth_token_accumulating_fact f join wh_user_dimension u on u.key = f.user_key where $__timeFilter(f.auth_token_issued_time)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Session hours",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "select round(coalesce(sum(extract(epoch from least(s.session_terminated_time, now()) - s.session_active_time)), 0) / 3600.0, 2) as \"Hours\" from wh_session_accumulating_fact s join wh_user_dimension u on u.key = s.user_key join wh_host_dimension h on h.key = s.host_key where s.session_active_time <> 'infinity' and $__timeFilter(s.session_active_time)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "decimals": 2
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "Active sessions now",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "select count(*) as \"Active\" from wh_session_accumulating_fact s join wh_user_dimension u on u.key = s.user_key join wh_host_dimension h on h.key = s.host_key where s.session_active_time <> 'infinity' and s.session_terminated_time = 'infinity'"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Logins & active hours per user",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "select case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as \"User\", u.auth_method_name as \"Auth method\", count(*) as \"Logins\", round(sum(extract(epoch from upper(f.auth_token_approximate_active_time_range) - lower(f.auth_token_approximate_active_time_range))) / 3600.0, 2) as \"Active hours (approx)\", max(f.auth_token_issued_time) as \"Last login\" from wh_auth_token_accumulating_fact f join wh_user_dimension u on u.key = f.user_key where $__timeFilter(f.auth_token_issued_time) group by 1, 2 order by \"Last login\" desc"
+        }
+      ],
+      "description": "Active hours = time from login until the token was last used (Boundary records last use approximately)."
+    },
+    {
+      "id": 6,
+      "title": "Session hours per user & target",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "select case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as \"User\", h.target_name as \"Target\", count(*) as \"Sessions\", round(sum(extract(epoch from least(s.session_terminated_time, now()) - s.session_active_time)) / 3600.0, 2) as \"Session hours\", sum(coalesce(s.total_bytes_up, 0) + coalesce(s.total_bytes_down, 0)) as \"Bytes\" from wh_session_accumulating_fact s join wh_user_dimension u on u.key = s.user_key join wh_host_dimension h on h.key = s.host_key where s.session_active_time <> 'infinity' and $__timeFilter(s.session_active_time) group by 1, 2 order by \"Session hours\" desc"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bytes"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "title": "Logins over time",
+      "type": "barchart",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "select date_trunc('hour', f.auth_token_issued_time) as \"time\", case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as \"user\", count(*) as \"logins\" from wh_auth_token_accumulating_fact f join wh_user_dimension u on u.key = f.user_key where $__timeFilter(f.auth_token_issued_time) group by 1, 2 order by 1"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "columnField": "user",
+            "rowField": "time",
+            "valueField": "logins",
+            "emptyValue": "zero"
+          }
+        }
+      ],
+      "options": {
+        "stacking": "normal",
+        "xTickLabelSpacing": 100,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Active sessions",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "select case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as \"User\", h.target_name as \"Target\", s.session_active_time as \"Started\", round(extract(epoch from now() - s.session_active_time) / 60.0, 1) as \"Minutes\" from wh_session_accumulating_fact s join wh_user_dimension u on u.key = s.user_key join wh_host_dimension h on h.key = s.host_key where s.session_active_time <> 'infinity' and s.session_terminated_time = 'infinity' order by 3 desc"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Login log (latest 100)",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "select f.auth_token_issued_time as \"Login\", case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as \"User\", u.auth_method_name as \"Auth method\", f.auth_token_approximate_last_access_time as \"Last activity\", case when f.auth_token_deleted_time = 'infinity' then 'active' else 'ended' end as \"Token\" from wh_auth_token_accumulating_fact f join wh_user_dimension u on u.key = f.user_key where $__timeFilter(f.auth_token_issued_time) order by 1 desc limit 100"
+        }
+      ]
+    }
+  ]
+}

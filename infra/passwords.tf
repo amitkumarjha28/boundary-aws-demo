@@ -42,3 +42,30 @@ locals {
   linux_ssh_password     = coalesce(var.linux_ssh_password, random_password.linux_ssh.result)
   demo_db_password       = coalesce(var.demo_db_password, random_password.demo_db_user.result)
 }
+
+# Ops instance: OpenLDAP, Grafana, and the read-only warehouse DB role
+resource "random_password" "ldap_admin" {
+  length           = 20
+  override_special = local.safe_special
+}
+
+resource "random_password" "ldap_readonly" {
+  length           = 20
+  override_special = local.safe_special
+}
+
+resource "random_password" "ldap_user" {
+  for_each         = var.ldap_users
+  length           = 16
+  override_special = local.safe_special
+}
+
+resource "random_password" "grafana_admin" {
+  length           = 20
+  override_special = local.safe_special
+}
+
+resource "random_password" "grafana_db" {
+  length           = 20
+  override_special = local.safe_special
+}
