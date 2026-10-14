@@ -4,11 +4,11 @@ set -euxo pipefail
 echo "===> Initializing Boundary Controller setup..."
 
 # Install dependencies
-dnf install -y yum-utils postgresql15 jq nc
+dnf install -y yum-utils postgresql15 jq nc unzip
 
-# Install HashiCorp Boundary
+# Install HashiCorp Boundary (pinned so controller and workers match)
 dnf config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo || true
-if ! dnf install -y boundary; then
+if ! dnf install -y "boundary-${boundary_version}"; then
   echo "Installing boundary directly from official binary release..."
   BOUNDARY_VER="${boundary_version}"
   curl -fsSL "https://releases.hashicorp.com/boundary/$${BOUNDARY_VER}/boundary_$${BOUNDARY_VER}_linux_amd64.zip" -o /tmp/boundary.zip
@@ -31,8 +31,10 @@ disable_mlock = true
 controller {
   name        = "boundary-controller-1"
   description = "Boundary Primary Controller"
+  # Address workers use to reach this controller (defaults to the 0.0.0.0 listener)
+  public_cluster_addr = "{{ GetPrivateIP }}:9201"
   database {
-    url = "postgresql://${db_username}:${db_password}@${db_endpoint}/boundary?sslmode=disable"
+    url = "postgresql://${db_username}:${db_password}@${db_endpoint}/boundary?sslmode=require"
   }
 }
 
@@ -126,10 +128,15 @@ DBSCRIPT
 
 # Initialize Boundary Database
 echo "===> Initializing Boundary Database Schema..."
-boundary database init -config /etc/boundary.d/controller.hcl > /etc/boundary.d/db-init.log 2>&1 || {
-  echo "Boundary DB init returned non-zero (schema may already exist). Checking log:"
-  cat /etc/boundary.d/db-init.log || true
-}
+if ! boundary database init -config /etc/boundary.d/controller.hcl > /etc/boundary.d/db-init.log 2>&1; then
+  if grep -q "already been initialized" /etc/boundary.d/db-init.log; then
+    echo "Boundary database already initialized; continuing."
+  else
+    echo "Boundary database init FAILED:"
+    grep -v "postgresql://" /etc/boundary.d/db-init.log || true
+    exit 1
+  fi
+fi
 
 # Read-only role for Grafana: SELECT on the Boundary data warehouse (wh_*) tables only
 echo "===> Creating read-only warehouse role for Grafana..."

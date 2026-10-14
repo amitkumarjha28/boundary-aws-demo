@@ -4,11 +4,11 @@ set -euxo pipefail
 echo "===> Initializing Boundary Ingress Worker setup..."
 
 # Install dependencies
-dnf install -y yum-utils jq nc
+dnf install -y yum-utils jq nc unzip
 
-# Install HashiCorp Boundary
+# Install HashiCorp Boundary (pinned so controller and workers match)
 dnf config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo || true
-if ! dnf install -y boundary; then
+if ! dnf install -y "boundary-${boundary_version}"; then
   echo "Installing boundary directly from official binary release..."
   BOUNDARY_VER="${boundary_version}"
   curl -fsSL "https://releases.hashicorp.com/boundary/$${BOUNDARY_VER}/boundary_$${BOUNDARY_VER}_linux_amd64.zip" -o /tmp/boundary.zip
@@ -57,7 +57,7 @@ worker {
   tags {
     type = ["ingress", "public"]
   }
-  controllers = [
+  initial_upstreams = [
     "${controller_private_ip}:9201"
   ]
 }

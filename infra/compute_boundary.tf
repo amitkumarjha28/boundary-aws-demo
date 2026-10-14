@@ -11,6 +11,7 @@ resource "aws_instance" "controller" {
   iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
   associate_public_ip_address = true
 
+  user_data_replace_on_change = true
   user_data = templatefile("${path.module}/templates/controller-init.sh.tftpl", {
     boundary_version    = var.boundary_version
     db_username         = var.rds_username
@@ -46,6 +47,7 @@ resource "aws_instance" "ingress_worker" {
   iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
   associate_public_ip_address = true
 
+  user_data_replace_on_change = true
   user_data = templatefile("${path.module}/templates/ingress-worker-init.sh.tftpl", {
     boundary_version      = var.boundary_version
     controller_private_ip = aws_instance.controller.private_ip
@@ -75,6 +77,7 @@ resource "aws_instance" "egress_worker" {
   iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
   associate_public_ip_address = false
 
+  user_data_replace_on_change = true
   user_data = templatefile("${path.module}/templates/egress-worker-init.sh.tftpl", {
     boundary_version          = var.boundary_version
     controller_private_ip     = aws_instance.controller.private_ip

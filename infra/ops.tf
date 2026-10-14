@@ -95,6 +95,7 @@ resource "aws_instance" "ops" {
   associate_public_ip_address = false
 
   # Gzipped to stay under the 16 KB user-data limit (cloud-init decompresses it)
+  user_data_replace_on_change = true
   user_data_base64 = base64gzip(templatefile("${path.module}/templates/ops-init.sh.tftpl", {
     ldap_domain                = local.ldap_domain
     ldap_admin_password        = random_password.ldap_admin.result

@@ -67,7 +67,7 @@ datasources:
     user: grafana_ro
     jsonData:
       database: boundary
-      sslmode: disable
+      sslmode: require
       postgresVersion: 1500
     secureJsonData:
       password: "${grafana_db_password}"

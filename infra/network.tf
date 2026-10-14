@@ -157,7 +157,8 @@ resource "aws_instance" "nat" {
   source_dest_check           = false # Critical for NAT functionality
   associate_public_ip_address = true
 
-  user_data = file("${path.module}/templates/nat-instance-init.sh.tftpl")
+  user_data_replace_on_change = true
+  user_data                   = file("${path.module}/templates/nat-instance-init.sh.tftpl")
 
   root_block_device {
     volume_size           = 8

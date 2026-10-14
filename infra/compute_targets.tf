@@ -11,6 +11,7 @@ resource "aws_instance" "linux_target" {
   iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
   associate_public_ip_address = false
 
+  user_data_replace_on_change = true
   user_data = templatefile("${path.module}/templates/linux-target-init.sh.tftpl", {
     linux_ssh_password = local.linux_ssh_password
   })
@@ -56,6 +57,7 @@ resource "aws_instance" "windows_target" {
   iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
   associate_public_ip_address = false
 
+  user_data_replace_on_change = true
   user_data = templatefile("${path.module}/templates/windows-target-init.ps1.tftpl", {
     windows_admin_password = local.windows_admin_password
   })
