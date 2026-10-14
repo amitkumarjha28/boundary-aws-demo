@@ -6,11 +6,11 @@ echo "===> Initializing Boundary Controller setup..."
 # Install dependencies
 dnf install -y yum-utils postgresql15 jq nc unzip
 
-# Install HashiCorp Boundary (pinned so controller and workers match)
+# Install HashiCorp Boundary Enterprise (pinned so controller and workers match)
 dnf config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo || true
-if ! dnf install -y "boundary-${boundary_version}"; then
+if ! dnf install -y "boundary-enterprise-${boundary_version}+ent"; then
   echo "Installing boundary directly from official binary release..."
-  BOUNDARY_VER="${boundary_version}"
+  BOUNDARY_VER="${boundary_version}+ent"
   curl -fsSL "https://releases.hashicorp.com/boundary/$${BOUNDARY_VER}/boundary_$${BOUNDARY_VER}_linux_amd64.zip" -o /tmp/boundary.zip
   unzip -o /tmp/boundary.zip -d /usr/bin/
   chmod +x /usr/bin/boundary
@@ -24,6 +24,20 @@ mkdir -p /etc/boundary.d /var/log/boundary
 chown -R boundary:boundary /etc/boundary.d /var/log/boundary
 chmod 750 /etc/boundary.d /var/log/boundary
 
+# Boundary Enterprise license from SSM Parameter Store (retry while IAM propagates)
+echo "===> Fetching Boundary Enterprise license from SSM..."
+for i in {1..30}; do
+  if aws ssm get-parameter --region "${aws_region}" --name "${license_parameter}" --with-decryption \
+      --query Parameter.Value --output text > /etc/boundary.d/boundary.hclic 2>/dev/null; then
+    break
+  fi
+  echo "Waiting for license parameter ($i/30)..."
+  sleep 10
+done
+test -s /etc/boundary.d/boundary.hclic
+chown boundary:boundary /etc/boundary.d/boundary.hclic
+chmod 640 /etc/boundary.d/boundary.hclic
+
 # Write Boundary Controller HCL configuration
 cat << 'EOF' > /etc/boundary.d/controller.hcl
 disable_mlock = true
@@ -33,6 +47,7 @@ controller {
   description = "Boundary Primary Controller"
   # Address workers use to reach this controller (defaults to the 0.0.0.0 listener)
   public_cluster_addr = "{{ GetPrivateIP }}:9201"
+  license             = "file:///etc/boundary.d/boundary.hclic"
   database {
     url = "postgresql://${db_username}:${db_password}@${db_endpoint}/boundary?sslmode=require"
   }
@@ -71,6 +86,14 @@ kms "aead" {
   aead_type = "aes-gcm"
   key       = "${worker_auth_kms_key}"
   key_id    = "global_worker_auth"
+}
+
+# Encrypts Boundary Session Recording (BSR) files
+kms "aead" {
+  purpose   = "bsr"
+  aead_type = "aes-gcm"
+  key       = "${bsr_kms_key}"
+  key_id    = "global_bsr"
 }
 
 kms "aead" {

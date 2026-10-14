@@ -8,7 +8,7 @@ resource "aws_instance" "controller" {
   instance_type               = var.instance_type_controller
   subnet_id                   = aws_subnet.public.id
   vpc_security_group_ids      = [aws_security_group.controller.id]
-  iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
+  iam_instance_profile        = aws_iam_instance_profile.controller.name
   associate_public_ip_address = true
 
   user_data_replace_on_change = true
@@ -22,6 +22,9 @@ resource "aws_instance" "controller" {
     root_kms_key        = local.boundary_root_key
     worker_auth_kms_key = local.boundary_worker_auth_key
     recovery_kms_key    = local.boundary_recovery_key
+    bsr_kms_key         = local.boundary_bsrm_key
+    aws_region          = var.aws_region
+    license_parameter   = aws_ssm_parameter.boundary_license.name
   })
 
   root_block_device {
@@ -35,7 +38,10 @@ resource "aws_instance" "controller" {
     Role = "Controller"
   }
 
-  depends_on = [aws_db_instance.postgres]
+  depends_on = [
+    aws_db_instance.postgres,
+    aws_iam_role_policy.controller, # license read must work at first boot
+  ]
 }
 
 # 2. Boundary Ingress Worker (Public Subnet)
@@ -44,7 +50,7 @@ resource "aws_instance" "ingress_worker" {
   instance_type               = var.instance_type_ingress_worker
   subnet_id                   = aws_subnet.public.id
   vpc_security_group_ids      = [aws_security_group.ingress_worker.id]
-  iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
+  iam_instance_profile        = aws_iam_instance_profile.worker.name
   associate_public_ip_address = true
 
   user_data_replace_on_change = true
@@ -74,7 +80,7 @@ resource "aws_instance" "egress_worker" {
   instance_type               = var.instance_type_egress_worker
   subnet_id                   = aws_subnet.private_primary.id
   vpc_security_group_ids      = [aws_security_group.egress_worker.id]
-  iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
+  iam_instance_profile        = aws_iam_instance_profile.worker.name
   associate_public_ip_address = false
 
   user_data_replace_on_change = true

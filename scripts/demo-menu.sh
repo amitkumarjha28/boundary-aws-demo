@@ -89,12 +89,13 @@ echo " 3) Authenticate as SysAdmin persona (sysadmin)"
 echo " 4) Authenticate as Data Analyst persona (analyst)"
 echo " l) Authenticate as an LDAP user (boundary-admins / boundary-users)"
 echo " --------------------------------------------------"
-echo " 5) Connect to Linux SSH Target       (Port 22)"
+echo " 5) Connect to Linux SSH Target       (Port 22, injected creds, recorded)"
 echo " 6) Connect to Windows RDP Target     (Port 3389)"
 echo " 7) Connect to RDS PostgreSQL Target   (Port 5432)"
 echo " 8) Connect to Internal Web Target     (Port 8080)"
 echo " g) Open Grafana dashboards            (admins only)"
 echo " p) Open Prometheus UI                 (admins only)"
+echo " r) List SSH session recordings       (admins only)"
 echo " --------------------------------------------------"
 echo " 9) View Target & Credential Details"
 echo " q) Quit"
@@ -130,6 +131,10 @@ case $choice in
   p|P)
     echo "Launching Boundary tunnel to Prometheus ($TARGET_PROM)..."
     tunnel "$TARGET_PROM" 9090
+    ;;
+  r|R)
+    echo "Session recordings (play them back in the Admin UI: Demo-Org > Session Recordings):"
+    boundary session-recordings list -scope-id global -recursive
     ;;
   9)
     jq . "$CONFIG_FILE"

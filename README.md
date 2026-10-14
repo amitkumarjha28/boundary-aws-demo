@@ -1,10 +1,10 @@
-# HashiCorp Boundary on AWS — Multi-Hop Demo Environment
+# HashiCorp Boundary Enterprise on AWS — Multi-Hop Demo Environment
 
 > 🚀 **In a hurry?** See the [Quick Start Guide](QUICKSTART.md).
 
-A cost-optimized AWS deployment of **HashiCorp Boundary**, managed with **HCP Terraform**, demonstrating zero-trust access across the primary use cases:
+A cost-optimized AWS deployment of **HashiCorp Boundary Enterprise**, managed with **HCP Terraform**, demonstrating zero-trust access across the primary use cases:
 
-- **SSH Target (Linux)**: shell access with brokered credentials
+- **SSH Target (Linux)**: Enterprise `ssh` target with **credential injection** and **session recording** to S3
 - **RDP Target (Windows Server)**: desktop sessions to private instances
 - **RDS PostgreSQL Target**: database access with credential brokering
 - **HTTP Web Portal Target**: authenticated tunnel to an isolated internal web app
@@ -53,7 +53,23 @@ graph TD
 2. **Zero-trust isolation**: targets have no public IP. Security groups accept target ports (22, 3389, 5432, 8080) **only from the Egress Worker SG**.
 3. **systemd services**: controller and workers run as a dedicated `boundary` user with auto-restart and journald logging.
 4. **Cost optimization**: a t3.nano NAT instance instead of a NAT Gateway (toggle `enable_nat_gateway`), and one `db.t4g.micro` serves both the Boundary DB and the demo `appdb`. About **$0.12–0.16 / hour** including the ops instance.
-5. **No secrets in the repo**: all target and user passwords are generated per deployment with `random_password` and exposed only as sensitive outputs.
+5. **No secrets in the repo**: all target and user passwords are generated per deployment with `random_password` and exposed only as sensitive outputs. The Enterprise license is a sensitive workspace variable (`*.hclic` is gitignored).
+
+---
+
+## Enterprise Features
+
+| Feature | Where | Notes |
+| :--- | :--- | :--- |
+| **Boundary Enterprise binaries** | controller and both workers | `boundary-enterprise-<boundary_version>+ent` RPM (default 0.19.5+ent) |
+| **License** | `boundary_license` workspace variable → SSM SecureString → `/etc/boundary.d/boundary.hclic` | Only the controller can read the parameter. The license never appears in git or user-data |
+| **Multi-hop sessions** | `ingress_worker_filter` on every target | Enterprise/HCP only; the community build rejects it ("not supported in OSS") |
+| **SSH credential injection** | `linux-ssh-target` (type `ssh`) | The worker logs in to the target for the user, who never sees the password |
+| **Session recording** | `linux-ssh-target` → storage bucket `aws-session-recordings` | Workers stage recordings in `/var/lib/boundary/recordings` and upload them to a private, encrypted S3 bucket. Recordings are signed and encrypted with the `bsr` KMS key |
+
+Session recording storage uses **dynamic AWS credentials**. The Boundary AWS plugin, on the controller and on workers tagged `storage = ["s3"]`, assumes the `<env>-boundary-session-recording` IAM role, which only those instance roles can assume and which can only reach that bucket. Private-subnet workers reach S3 through a gateway VPC endpoint.
+
+To view recordings, sign in to the Admin UI as an admin (`admin`, `alice` or `bob`) and go to **Demo-Org → Session Recordings** to play back SSH sessions. You can also use menu option `r` or `boundary session-recordings list -scope-id global -recursive`.
 
 ---
 
@@ -66,7 +82,8 @@ graph TD
 │   ├── variables.tf
 │   ├── network.tf               # VPC, subnets, routing, NAT instance/gateway
 │   ├── security_groups.tf       # zero-trust segmentation
-│   ├── iam.tf                   # SSM instance profile
+│   ├── iam.tf                   # SSM instance profile (targets, NAT, ops)
+│   ├── enterprise.tf            # license in SSM, controller/worker IAM, S3 recording bucket
 │   ├── database.tf              # RDS PostgreSQL
 │   ├── kms.tf                   # AEAD keys (root, worker-auth, recovery, bsr)
 │   ├── passwords.tf             # generated demo credentials
@@ -83,6 +100,7 @@ graph TD
 │   ├── variables.tf
 │   ├── main.tf                  # scopes, password auth, users, hosts, creds, targets, RBAC
 │   ├── ldap.tf                  # LDAP auth method, managed groups, Grafana/Prometheus targets
+│   ├── session_recording.tf     # S3 storage bucket for session recordings
 │   └── outputs.tf
 │
 ├── scripts/
@@ -106,9 +124,10 @@ Two VCS-driven workspaces in the **Amit_TFC** organization, both connected to th
 **Wiring**
 
 1. **AWS credentials**: on `boundary-demo-infra`, add the environment variables `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (both **sensitive**). Add `AWS_SESSION_TOKEN` too if you use temporary credentials.
-2. **Remote state sharing**: `boundary-demo-infra` → Settings → General → *Remote state sharing* → share with `boundary-demo-config`.
-3. **Run trigger**: `boundary-demo-config` → Settings → Run Triggers → source workspace `boundary-demo-infra`. Optionally enable *Auto-apply run-triggered runs*.
-4. **Optional variables** on `boundary-demo-infra`: any variable from [`infra/variables.tf`](infra/variables.tf), e.g. `aws_region`. To pin a password instead of generating one, set `rds_password`, `windows_admin_password`, `linux_ssh_password` or `demo_db_password` as **sensitive** Terraform variables.
+2. **Enterprise license**: on `boundary-demo-infra`, add a **sensitive Terraform** variable `boundary_license` containing the contents of your `.hclic` file. Never commit the file.
+3. **Remote state sharing**: `boundary-demo-infra` → Settings → General → *Remote state sharing* → share with `boundary-demo-config`.
+4. **Run trigger**: `boundary-demo-config` → Settings → Run Triggers → source workspace `boundary-demo-infra`. Optionally enable *Auto-apply run-triggered runs*.
+5. **Optional variables** on `boundary-demo-infra`: any variable from [`infra/variables.tf`](infra/variables.tf), e.g. `aws_region`. To pin a password instead of generating one, set `rds_password`, `windows_admin_password`, `linux_ssh_password` or `demo_db_password` as **sensitive** Terraform variables.
 
 > **Network note:** HCP Terraform runners for `boundary-demo-config` call the controller API on port 9200 from the internet. Keep `authorized_client_cidr = "0.0.0.0/0"`, or use an HCP Terraform agent inside the VPC if you need to lock it down.
 
@@ -152,7 +171,7 @@ boundary authenticate password -auth-method-id="$AUTH_METHOD_ID" -login-name=adm
 
 | Target | Command |
 | :--- | :--- |
-| Linux SSH (22) | `boundary connect ssh -target-id $(terraform -chdir=boundary-config output -raw linux_ssh_target_id)` |
+| Linux SSH (22) | `boundary connect ssh -target-id $(terraform -chdir=boundary-config output -raw linux_ssh_target_id)`. No password prompt (injected), and the session is recorded |
 | Windows RDP (3389) | `boundary connect rdp -target-id $(terraform -chdir=boundary-config output -raw windows_rdp_target_id)` |
 | RDS PostgreSQL (5432) | `boundary connect postgres -target-id $(terraform -chdir=boundary-config output -raw rds_postgres_target_id) -dbname appdb` |
 | Web Portal (8080) | `boundary connect -listen-port 8080 -target-id $(terraform -chdir=boundary-config output -raw web_target_id)`, then open http://127.0.0.1:8080 |

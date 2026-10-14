@@ -44,6 +44,11 @@ output "user_passwords" {
   sensitive   = true
 }
 
+output "storage_bucket_id" {
+  description = "Boundary storage bucket ID for session recordings"
+  value       = boundary_storage_bucket.session_recordings.id
+}
+
 output "ldap_auth_method_id" {
   description = "LDAP Auth Method ID (primary for Demo-Org)"
   value       = boundary_auth_method_ldap.corp.id

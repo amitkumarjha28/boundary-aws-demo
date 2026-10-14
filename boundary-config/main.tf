@@ -190,17 +190,21 @@ locals {
   egress_filter  = "\"egress\" in \"/tags/type\""
 }
 
-# 1. Linux SSH Target (Port 22)
+# 1. Linux SSH Target (Port 22) - Enterprise SSH target:
+#    credentials are injected by the worker (users never see them) and
+#    every session is recorded to S3.
 resource "boundary_target" "linux_ssh" {
-  name                           = "linux-ssh-target"
-  description                    = "Secure SSH Access via Boundary Multi-Hop"
-  type                           = "tcp"
-  default_port                   = 22
-  scope_id                       = boundary_scope.project.id
-  ingress_worker_filter          = local.ingress_filter
-  egress_worker_filter           = local.egress_filter
-  host_source_ids                = [boundary_host_set_static.linux.id]
-  brokered_credential_source_ids = [boundary_credential_username_password.linux_ssh.id]
+  name                                       = "linux-ssh-target"
+  description                                = "SSH via Boundary Multi-Hop with credential injection and session recording"
+  type                                       = "ssh"
+  default_port                               = 22
+  scope_id                                   = boundary_scope.project.id
+  ingress_worker_filter                      = local.ingress_filter
+  egress_worker_filter                       = local.egress_filter
+  host_source_ids                            = [boundary_host_set_static.linux.id]
+  injected_application_credential_source_ids = [boundary_credential_username_password.linux_ssh.id]
+  enable_session_recording                   = true
+  storage_bucket_id                          = boundary_storage_bucket.session_recordings.id
 }
 
 # 2. Windows RDP Target (Port 3389)

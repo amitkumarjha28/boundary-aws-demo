@@ -15,6 +15,9 @@ override.tf.json
 boundary_demo_targets.json
 .boundary/
 
+# Enterprise license files (set as a sensitive HCP variable instead)
+*.hclic
+
 # OS artifacts
 .DS_Store
 Thumbs.db

@@ -6,11 +6,11 @@ echo "===> Initializing Boundary Egress Worker setup..."
 # Install dependencies
 dnf install -y yum-utils jq nc unzip
 
-# Install HashiCorp Boundary (pinned so controller and workers match)
+# Install HashiCorp Boundary Enterprise (pinned so controller and workers match)
 dnf config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo || true
-if ! dnf install -y "boundary-${boundary_version}"; then
+if ! dnf install -y "boundary-enterprise-${boundary_version}+ent"; then
   echo "Installing boundary directly from official binary release..."
-  BOUNDARY_VER="${boundary_version}"
+  BOUNDARY_VER="${boundary_version}+ent"
   curl -fsSL "https://releases.hashicorp.com/boundary/$${BOUNDARY_VER}/boundary_$${BOUNDARY_VER}_linux_amd64.zip" -o /tmp/boundary.zip
   unzip -o /tmp/boundary.zip -d /usr/bin/
   chmod +x /usr/bin/boundary
@@ -20,8 +20,8 @@ fi
 useradd --system --user-group boundary || true
 
 # Prepare directories
-mkdir -p /etc/boundary.d /var/log/boundary
-chown -R boundary:boundary /etc/boundary.d /var/log/boundary
+mkdir -p /etc/boundary.d /var/log/boundary /var/lib/boundary/recordings
+chown -R boundary:boundary /etc/boundary.d /var/log/boundary /var/lib/boundary
 chmod 750 /etc/boundary.d /var/log/boundary
 
 # Fetch EC2 Private IP using IMDSv2
@@ -60,8 +60,11 @@ worker {
   name        = "boundary-egress-worker-1"
   description = "Boundary Private Egress Worker"
   public_addr = "$PRIVATE_IP"
+  # Local staging for session recordings before upload to S3
+  recording_storage_path = "/var/lib/boundary/recordings"
   tags {
-    type = ["egress", "private"]
+    type    = ["egress", "private"]
+    storage = ["s3"]
   }
   initial_upstreams = [
     "${ingress_worker_private_ip}:9202"

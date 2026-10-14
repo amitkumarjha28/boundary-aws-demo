@@ -32,7 +32,10 @@ rds_allocated_storage = 20
 rds_username          = "postgres"
 
 # Boundary
-boundary_version = "0.19.2"
+boundary_version = "0.19.5" # Enterprise build (+ent) is installed
+
+# Required: Boundary Enterprise license. Set it as a *sensitive* Terraform
+# variable named boundary_license in the HCP workspace, never in this file.
 
 # Passwords are generated automatically (see passwords.tf). To pin your own,
 # set these as *sensitive* variables in the HCP Terraform workspace instead

@@ -130,3 +130,18 @@ output "grafana_admin_password" {
   value       = random_password.grafana_admin.result
   sensitive   = true
 }
+
+output "aws_region" {
+  description = "AWS region of the deployment"
+  value       = var.aws_region
+}
+
+output "session_recording_bucket" {
+  description = "S3 bucket that stores Boundary session recordings"
+  value       = aws_s3_bucket.session_recordings.bucket
+}
+
+output "session_recording_role_arn" {
+  description = "IAM role the Boundary AWS storage plugin assumes for session recording"
+  value       = aws_iam_role.session_recording.arn
+}

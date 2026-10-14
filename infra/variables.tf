@@ -35,9 +35,9 @@ variable "private_subnet_secondary_cidr" {
 }
 
 variable "boundary_version" {
-  description = "HashiCorp Boundary binary version to install"
+  description = "HashiCorp Boundary Enterprise version to install (without the +ent suffix)"
   type        = string
-  default     = "0.19.2"
+  default     = "0.19.5"
 }
 
 variable "authorized_client_cidr" {
@@ -154,5 +154,16 @@ variable "ldap_users" {
   validation {
     condition     = alltrue([for g in values(var.ldap_users) : contains(["boundary-admins", "boundary-users"], g)])
     error_message = "Each LDAP user's group must be \"boundary-admins\" or \"boundary-users\"."
+  }
+}
+
+variable "boundary_license" {
+  description = "Boundary Enterprise license (contents of the .hclic file). Set as a sensitive workspace variable; never commit it."
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(trimspace(var.boundary_license)) > 0
+    error_message = "boundary_license must contain the Boundary Enterprise license."
   }
 }
