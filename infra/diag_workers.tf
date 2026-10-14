@@ -42,6 +42,24 @@ data "aws_s3_object" "worker_diag" {
   key      = each.value
 }
 
+data "aws_ssm_instances" "managed" {}
+
+data "aws_iam_instance_profile" "worker" {
+  name = aws_iam_instance_profile.worker.name
+}
+
+output "diag_identity" {
+  description = "TEMPORARY: SSM registration and worker instance profile role"
+  value = {
+    ssm_managed_instances = join(",", data.aws_ssm_instances.managed.ids)
+    controller_id         = aws_instance.controller.id
+    ingress_worker_id     = aws_instance.ingress_worker.id
+    egress_worker_id      = aws_instance.egress_worker.id
+    worker_profile_role   = data.aws_iam_instance_profile.worker.role_name
+    ingress_profile       = aws_instance.ingress_worker.iam_instance_profile
+  }
+}
+
 output "worker_diagnostics" {
   description = "TEMPORARY: scrubbed worker logs collected via SSM Run Command"
   value       = { for k, o in data.aws_s3_object.worker_diag : k => o.body }
