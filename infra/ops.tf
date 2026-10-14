@@ -84,6 +84,7 @@ resource "aws_instance" "ops" {
     egress_worker_private_ip   = aws_instance.egress_worker.private_ip
     dashboard_boundary_metrics = file("${path.module}/templates/grafana/boundary-metrics.json")
     dashboard_user_activity    = file("${path.module}/templates/grafana/user-activity.json")
+    dashboard_login_report     = file("${path.module}/templates/grafana/login-report.json")
   }))
 
   root_block_device {

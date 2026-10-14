@@ -1,0 +1,304 @@
+{
+  "uid": "boundary-login-report",
+  "title": "Boundary - Login Time Report",
+  "tags": [
+    "boundary"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "1m",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Users who logged in",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "with logins as ( select case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as usr, u.auth_method_name as method, f.auth_token_issued_time as login_at, greatest(f.auth_token_approximate_last_access_time, f.auth_token_issued_time) as last_seen, f.auth_token_deleted_time as ended from wh_auth_token_accumulating_fact f join wh_user_dimension u on u.key = f.user_key where $__timeFilter(f.auth_token_issued_time)) select count(distinct usr) as \"Users\" from logins"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Total time logged in (all users)",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "with logins as ( select case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as usr, u.auth_method_name as method, f.auth_token_issued_time as login_at, greatest(f.auth_token_approximate_last_access_time, f.auth_token_issued_time) as last_seen, f.auth_token_deleted_time as ended from wh_auth_token_accumulating_fact f join wh_user_dimension u on u.key = f.user_key where $__timeFilter(f.auth_token_issued_time)), ordered as ( select usr, login_at, last_seen, max(last_seen) over (partition by usr order by login_at rows between unbounded preceding and 1 preceding) as prev_end from logins), grouped as ( select *, sum(case when prev_end is null or login_at > prev_end then 1 else 0 end) over (partition by usr order by login_at) as grp from ordered), merged as ( select usr, min(login_at) as s, max(last_seen) as e from grouped group by usr, grp), logged_in as ( select usr, sum(extract(epoch from e - s)) as secs from merged group by usr), per_user as ( select usr, string_agg(distinct method, ', ') as methods, count(*) as logins, min(login_at) as first_login, max(last_seen) as last_activity, bool_or(ended = 'infinity') as active from logins group by usr), sessions as ( select case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as usr, count(*) as n, sum(extract(epoch from least(s.session_terminated_time, now()) - s.session_active_time)) as secs from wh_session_accumulating_fact s join wh_user_dimension u on u.key = s.user_key where s.session_active_time <> 'infinity' and $__timeFilter(s.session_active_time) group by 1) select sum(secs) as \"Total\" from logged_in"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "Total time on targets (all users)",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "with logins as ( select case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as usr, u.auth_method_name as method, f.auth_token_issued_time as login_at, greatest(f.auth_token_approximate_last_access_time, f.auth_token_issued_time) as last_seen, f.auth_token_deleted_time as ended from wh_auth_token_accumulating_fact f join wh_user_dimension u on u.key = f.user_key where $__timeFilter(f.auth_token_issued_time)), ordered as ( select usr, login_at, last_seen, max(last_seen) over (partition by usr order by login_at rows between unbounded preceding and 1 preceding) as prev_end from logins), grouped as ( select *, sum(case when prev_end is null or login_at > prev_end then 1 else 0 end) over (partition by usr order by login_at) as grp from ordered), merged as ( select usr, min(login_at) as s, max(last_seen) as e from grouped group by usr, grp), logged_in as ( select usr, sum(extract(epoch from e - s)) as secs from merged group by usr), per_user as ( select usr, string_agg(distinct method, ', ') as methods, count(*) as logins, min(login_at) as first_login, max(last_seen) as last_activity, bool_or(ended = 'infinity') as active from logins group by usr), sessions as ( select case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as usr, count(*) as n, sum(extract(epoch from least(s.session_terminated_time, now()) - s.session_active_time)) as secs from wh_session_accumulating_fact s join wh_user_dimension u on u.key = s.user_key where s.session_active_time <> 'infinity' and $__timeFilter(s.session_active_time) group by 1) select coalesce(sum(secs), 0) as \"Total\" from sessions"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "Users active in the last 15 minutes",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "with logins as ( select case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as usr, u.auth_method_name as method, f.auth_token_issued_time as login_at, greatest(f.auth_token_approximate_last_access_time, f.auth_token_issued_time) as last_seen, f.auth_token_deleted_time as ended from wh_auth_token_accumulating_fact f join wh_user_dimension u on u.key = f.user_key where $__timeFilter(f.auth_token_issued_time)) select count(distinct usr) as \"Active\" from logins where last_seen > now() - interval '15 minutes'"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Time logged in per user",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "description": "Time logged in = from login until the user's last activity with that login, with overlapping logins merged so time is not double counted. Boundary records last activity every few minutes, so very short logins can show ~0. Time on targets = exact duration of SSH/RDP/DB/web sessions.",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "with logins as ( select case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as usr, u.auth_method_name as method, f.auth_token_issued_time as login_at, greatest(f.auth_token_approximate_last_access_time, f.auth_token_issued_time) as last_seen, f.auth_token_deleted_time as ended from wh_auth_token_accumulating_fact f join wh_user_dimension u on u.key = f.user_key where $__timeFilter(f.auth_token_issued_time)), ordered as ( select usr, login_at, last_seen, max(last_seen) over (partition by usr order by login_at rows between unbounded preceding and 1 preceding) as prev_end from logins), grouped as ( select *, sum(case when prev_end is null or login_at > prev_end then 1 else 0 end) over (partition by usr order by login_at) as grp from ordered), merged as ( select usr, min(login_at) as s, max(last_seen) as e from grouped group by usr, grp), logged_in as ( select usr, sum(extract(epoch from e - s)) as secs from merged group by usr), per_user as ( select usr, string_agg(distinct method, ', ') as methods, count(*) as logins, min(login_at) as first_login, max(last_seen) as last_activity, bool_or(ended = 'infinity') as active from logins group by usr), sessions as ( select case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as usr, count(*) as n, sum(extract(epoch from least(s.session_terminated_time, now()) - s.session_active_time)) as secs from wh_session_accumulating_fact s join wh_user_dimension u on u.key = s.user_key where s.session_active_time <> 'infinity' and $__timeFilter(s.session_active_time) group by 1) select p.usr as \"User\", p.methods as \"Auth method\", p.logins as \"Logins\", round(l.secs) as \"Time logged in\", coalesce(s.n, 0) as \"Target sessions\", round(coalesce(s.secs, 0)) as \"Time on targets\", p.first_login as \"First login\", p.last_activity as \"Last activity\", case when p.active then 'Logged in' else 'Logged out' end as \"Status\" from per_user p join logged_in l on l.usr = p.usr left join sessions s on s.usr = p.usr order by \"Time logged in\" desc"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time logged in"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time on targets"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Time logged in",
+            "desc": true
+          }
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "title": "Time logged in per user (chart)",
+      "type": "barchart",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "with logins as ( select case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as usr, u.auth_method_name as method, f.auth_token_issued_time as login_at, greatest(f.auth_token_approximate_last_access_time, f.auth_token_issued_time) as last_seen, f.auth_token_deleted_time as ended from wh_auth_token_accumulating_fact f join wh_user_dimension u on u.key = f.user_key where $__timeFilter(f.auth_token_issued_time)), ordered as ( select usr, login_at, last_seen, max(last_seen) over (partition by usr order by login_at rows between unbounded preceding and 1 preceding) as prev_end from logins), grouped as ( select *, sum(case when prev_end is null or login_at > prev_end then 1 else 0 end) over (partition by usr order by login_at) as grp from ordered), merged as ( select usr, min(login_at) as s, max(last_seen) as e from grouped group by usr, grp), logged_in as ( select usr, sum(extract(epoch from e - s)) as secs from merged group by usr), per_user as ( select usr, string_agg(distinct method, ', ') as methods, count(*) as logins, min(login_at) as first_login, max(last_seen) as last_activity, bool_or(ended = 'infinity') as active from logins group by usr), sessions as ( select case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as usr, count(*) as n, sum(extract(epoch from least(s.session_terminated_time, now()) - s.session_active_time)) as secs from wh_session_accumulating_fact s join wh_user_dimension u on u.key = s.user_key where s.session_active_time <> 'infinity' and $__timeFilter(s.session_active_time) group by 1) select l.usr as \"User\", round(l.secs / 60.0, 1) as \"Minutes logged in\", round(coalesce(s.secs, 0) / 60.0, 1) as \"Minutes on targets\" from logged_in l left join sessions s on s.usr = l.usr order by 2 desc"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "xField": "User",
+        "showValue": "always",
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "Every login (most recent first)",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "boundary-wh"
+      },
+      "description": "Time logged in = from login until the user's last activity with that login, with overlapping logins merged so time is not double counted. Boundary records last activity every few minutes, so very short logins can show ~0. Time on targets = exact duration of SSH/RDP/DB/web sessions.",
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "boundary-wh"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "with logins as ( select case when u.auth_account_external_id not in ('None', 'Not Applicable') then u.auth_account_external_id when u.user_name <> 'None' then u.user_name else u.user_id end as usr, u.auth_method_name as method, f.auth_token_issued_time as login_at, greatest(f.auth_token_approximate_last_access_time, f.auth_token_issued_time) as last_seen, f.auth_token_deleted_time as ended from wh_auth_token_accumulating_fact f join wh_user_dimension u on u.key = f.user_key where $__timeFilter(f.auth_token_issued_time)) select usr as \"User\", method as \"Auth method\", login_at as \"Logged in\", last_seen as \"Last activity\", case when ended = 'infinity' then null else ended end as \"Logged out / expired\", round(extract(epoch from last_seen - login_at)) as \"Time logged in\", case when ended = 'infinity' then 'Logged in' else 'Ended' end as \"Status\" from logins order by login_at desc limit 500"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time logged in"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

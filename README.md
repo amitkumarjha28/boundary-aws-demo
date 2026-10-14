@@ -163,8 +163,10 @@ terraform -chdir=infra output -raw boundary_recovery_key        # recovery KMS k
 ```bash
 export BOUNDARY_ADDR=$(terraform -chdir=boundary-config output -raw boundary_addr)
 AUTH_METHOD_ID=$(terraform -chdir=boundary-config output -raw auth_method_id)
-# The Boundary CLI reads the login password from this env var
-export BOUNDARY_AUTHENTICATE_PASSWORD_PASSWORD=$(terraform -chdir=boundary-config output -json user_passwords | jq -r .admin)
+# BOUNDARY_AUTHENTICATE_PASSWORD_PASSWORD must hold an env:// reference,
+# so keep the password itself in a separate variable
+export DEMO_LOGIN_SECRET=$(terraform -chdir=boundary-config output -json user_passwords | jq -r .admin)
+export BOUNDARY_AUTHENTICATE_PASSWORD_PASSWORD=env://DEMO_LOGIN_SECRET
 
 boundary authenticate password -auth-method-id="$AUTH_METHOD_ID" -login-name=admin
 ```
@@ -210,11 +212,12 @@ Terraform itself never logs in as a user: it uses the recovery KMS key. `boundar
 
 The ops instance runs **Prometheus** and **Grafana**. Neither has a public IP: admins reach them **through Boundary** (menu options `g` / `p`, or `boundary connect -listen-port 3000 -target-id <grafana_target_id>`), then open http://127.0.0.1:3000 and log in as `admin` with `terraform -chdir=infra output -raw grafana_admin_password`.
 
-Two dashboards are provisioned in the **Boundary** folder:
+Three dashboards are provisioned in the **Boundary** folder:
 
 | Dashboard | Source | Shows |
 | :--- | :--- | :--- |
-| **Boundary - User Activity** (home) | Boundary data warehouse in Postgres (read-only `grafana_ro` role, `wh_*` tables only) | Who logged in, how many times, approx. active hours per user, session hours per user and target, live sessions, login log |
+| **Boundary - Login Time Report** (home) | Boundary data warehouse | **Which user logged in and for how long**: per-user time logged in (overlapping logins merged), time spent on targets, logins, first/last activity, status, plus every individual login |
+| **Boundary - User Activity** | Boundary data warehouse in Postgres (read-only `grafana_ro` role, `wh_*` tables only) | Who logged in, how many times, approx. active hours per user, session hours per user and target, live sessions, login log |
 | **Boundary - Cluster Metrics** | Prometheus scraping the `:9203/metrics` ops listener on the controller and both workers | Node up/down, API rate/latency/status codes, authentication requests, proxy connections and throughput per worker, cluster gRPC |
 
 **Why two sources:** Boundary's Prometheus metrics are aggregate and carry no user labels. Per-user history comes from Boundary's built-in data warehouse:

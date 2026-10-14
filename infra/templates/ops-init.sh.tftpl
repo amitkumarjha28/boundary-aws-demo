@@ -99,6 +99,10 @@ cat << 'EOF' > grafana/dashboards/user-activity.json
 ${dashboard_user_activity}
 EOF
 
+cat << 'EOF' > grafana/dashboards/login-report.json
+${dashboard_login_report}
+EOF
+
 # ---------------------------------------------------------------------------
 # Docker Compose stack
 # ---------------------------------------------------------------------------
@@ -138,7 +142,7 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: "${grafana_admin_password}"
       GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/user-activity.json
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/login-report.json
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
