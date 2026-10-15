@@ -133,7 +133,26 @@ Two VCS-driven workspaces in the **Amit_TFC** organization, both connected to th
 
 ---
 
-## Deploy
+## Deploy from scratch (one script)
+
+```bash
+./scripts/deploy.sh
+```
+
+The script prompts for everything it needs:
+
+| Prompt | Notes |
+| :--- | :--- |
+| HCP Terraform hostname, API token, organization | Reuses a saved token from `~/.terraform.d/credentials.tfrc.json` if present |
+| Workspace names | Defaults `boundary-demo-infra` / `boundary-demo-config` |
+| Workflow | `vcs` (runs on git push; needs a GitHub VCS connection in the org) or `cli` (uploads your local checkout) |
+| AWS region, access key ID, secret key, optional session token | Stored as sensitive workspace env vars |
+| Access CIDR | Who can reach the controller (9200) and ingress worker (9202) |
+| Boundary Enterprise license file (`.hclic`) | Stored only as the sensitive `boundary_license` variable |
+
+It then creates or updates both workspaces and their variables, sets up remote state sharing (and the run trigger for VCS), deploys the infrastructure, waits until both Boundary workers are connected, deploys the Boundary configuration, and writes **`DEMO.md`**: all IPs, URLs, IDs, logins and the demo walkthrough. `DEMO.md` contains live credentials and is gitignored. Regenerate it any time with `./scripts/generate-demo-doc.sh`.
+
+## Deploy (manual)
 
 1. Queue a plan on **`boundary-demo-infra`** and apply it (about 6–10 minutes). The apply waits until the controller API responds.
 2. **`boundary-demo-config`** is queued automatically by the run trigger. Apply it.
