@@ -153,3 +153,18 @@ output "boot_diagnostics" {
     data.aws_ssm_parameters_by_path.diag.values,
   ))
 }
+
+output "boundary_controller_private_ip" {
+  description = "Private IP of Boundary Controller"
+  value       = aws_instance.controller.private_ip
+}
+
+output "boundary_ingress_worker_private_ip" {
+  description = "Private IP of Boundary Ingress Worker"
+  value       = aws_instance.ingress_worker.private_ip
+}
+
+output "nat_public_ip" {
+  description = "Public IP used by the private subnet for outbound traffic (NAT instance or NAT Gateway)"
+  value       = var.enable_nat_gateway ? aws_eip.nat[0].public_ip : aws_instance.nat[0].public_ip
+}
